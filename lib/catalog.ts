@@ -367,6 +367,35 @@ export function buildCatalog(args: {
     const baseVariant = variants.find((variant) => variant.kind === "base");
     const isExtra = rowType === "Rune" || rowType === "Token";
 
+    const shouldSplitBasePrints =
+      drafts.length > 1 &&
+      drafts.every((draft) => draft.kind === "base" && draft.card !== null) &&
+      groupedProducts.length === drafts.length;
+
+    if (shouldSplitBasePrints) {
+      drafts.forEach((draft, index) => {
+        const card = draft.card as RawCard;
+        const variant = variants[index];
+        const splitName = displayName(card.name).replace(/\s+\d+\s+\(Buff\)$/i, "");
+        const splitType = card.classification.type;
+        rows.push({
+          id: `${set.code}-${collectorCode(card, set)}-${key.replace(/\s+/g, "-")}`,
+          number: collectorCode(card, set),
+          collectorNumber: card.collector_number,
+          name: splitName,
+          type: splitType,
+          rarity: card.classification.rarity,
+          domains: card.classification.domain,
+          imageUrl: variant.imageUrl,
+          artist: card.media.artist,
+          cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(fallbackProduct?.name ?? splitName)}/Versions`,
+          isExtra: splitType === "Rune" || splitType === "Token",
+          variants: [variant],
+        });
+      });
+      continue;
+    }
+
     rows.push({
       id: `${set.code}-${key.replace(/\s+/g, "-")}`,
       number: fallbackCard ? collectorCode(fallbackCard, set) : "—",
