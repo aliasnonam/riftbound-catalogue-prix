@@ -172,15 +172,100 @@ type SpecialCardDefinition = {
   kind?: VariantKind;
   category?: SpecialCategory;
   includeWithoutProduct?: boolean;
+  imageUrl?: string;
+  artist?: string;
 };
 
 const RUNE_DEFINITIONS: Record<string, SpecialCardDefinition> = {
-  "fury rune": { number: "R01", type: "Rune" },
-  "calm rune": { number: "R02", type: "Rune" },
-  "mind rune": { number: "R03", type: "Rune" },
-  "body rune": { number: "R04", type: "Rune" },
-  "chaos rune": { number: "R05", type: "Rune" },
-  "order rune": { number: "R06", type: "Rune" },
+  "fury rune": { number: "R01", type: "Rune", rarity: "Common" },
+  "calm rune": { number: "R02", type: "Rune", rarity: "Common" },
+  "mind rune": { number: "R03", type: "Rune", rarity: "Common" },
+  "body rune": { number: "R04", type: "Rune", rarity: "Common" },
+  "chaos rune": { number: "R05", type: "Rune", rarity: "Common" },
+  "order rune": { number: "R06", type: "Rune", rarity: "Common" },
+};
+
+type VariantVisual = {
+  imageUrl: string;
+  artist: string | null;
+};
+
+const ORIGINS_RUNE_VISUALS: Record<
+  string,
+  { base: VariantVisual; alternate: VariantVisual }
+> = {
+  "fury rune": {
+    base: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/12bcd0cde5d9ff4640e82945001e9fef863530f1-744x1039.png",
+      artist: "Greg Ghielmetti & Leah Chen",
+    },
+    alternate: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/09da06c69d07d4e72dde703737ef167472c715af-1488x2078.png",
+      artist: "Fairfoul",
+    },
+  },
+  "calm rune": {
+    base: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0a0e8c3d16c2595e2f8efcc2b1466226539b506c-744x1039.png",
+      artist: "Greg Ghielmetti & Leah Chen",
+    },
+    alternate: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/88187b586b9b3cc2f48fd20c806dd5fc5e1bfc71-1488x2078.png",
+      artist: "Zhongqi Li",
+    },
+  },
+  "mind rune": {
+    base: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f99aa4874baaebd2e81798c8a3aa01c5900f6d30-744x1039.png",
+      artist: "Greg Ghielmetti & Leah Chen",
+    },
+    alternate: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ecf8c8632c728520b51cd4bc79036677e96ebdfd-1488x2078.png",
+      artist: "Fairfoul",
+    },
+  },
+  "body rune": {
+    base: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3b3c3c07626d6180457c849047e0228dc0d19539-744x1039.png",
+      artist: "Greg Ghielmetti & Leah Chen",
+    },
+    alternate: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/011081f82cab36f8ec0d6874492512fd7859f59e-1488x2078.png",
+      artist: "Fairfoul",
+    },
+  },
+  "chaos rune": {
+    base: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/daf23b0deaa5e1a5a5d310b59e9ad25d1bd70363-744x1039.png",
+      artist: "Greg Ghielmetti & Leah Chen",
+    },
+    alternate: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fbcde2f71fcc06fb8afc83855e24447a393f8943-1488x2078.png",
+      artist: "Fairfoul",
+    },
+  },
+  "order rune": {
+    base: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/35ec6fdd2124324bb7052cba31c8c44f2e98f3ae-744x1039.png",
+      artist: "Greg Ghielmetti & Leah Chen",
+    },
+    alternate: {
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0e4904221c3bbbfcfde1734bc414dbe97c67e295-1488x2078.png",
+      artist: "Fairfoul",
+    },
+  },
 };
 
 const SPECIAL_CARD_DEFINITIONS: Partial<
@@ -193,17 +278,165 @@ const SPECIAL_CARD_DEFINITIONS: Partial<
       type: "Token",
       rarity: "Common",
       includeWithoutProduct: true,
+      imageUrl: "https://static.dotgg.gg/riftbound/cards/SFD-T01.2.webp",
+      artist: "League Splash Team",
     },
-    mech: { number: "T01", name: "Mech", type: "Token", rarity: "Common" },
+    mech: {
+      number: "T01",
+      name: "Mech",
+      type: "Token",
+      rarity: "Common",
+      imageUrl: "https://static.dotgg.gg/riftbound/cards/SFD-T01.webp",
+      artist: "Dao Trong Le",
+    },
     "sand soldier": {
       number: "T02",
       name: "Sand Soldier",
       type: "Token",
       rarity: "Common",
+      imageUrl: "https://static.dotgg.gg/riftbound/cards/SFD-T02.webp",
+      artist: "Kudos Productions",
     },
-    gold: { number: "T03", name: "Gold", type: "Token", rarity: "Common" },
+    gold: {
+      number: "T03",
+      name: "Gold",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e878c39b562a4e870e93b819c6d85cdf3fdc5238-744x1039.png",
+      artist: "Kudos Productions",
+    },
+  },
+  UNL: {
+    "baron pit": {
+      number: "T01",
+      name: "Baron Pit",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e44f173629322a4e0c32d3f8902c294d4482ef42-1039x744.png",
+      artist: "Fish Art Studio",
+    },
+    bird: {
+      number: "T02",
+      name: "Bird",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/949a2e43263a9fe0d957595325c7e2ebe06bf85f-744x1039.png",
+      artist: "Six More Vodka",
+    },
+    brush: {
+      number: "T03",
+      name: "Brush",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fad09d6bd9bf38e376f430ecb0b400762420d061-1039x744.png",
+      artist: "Kudos Productions",
+    },
+    buff: {
+      number: "T04",
+      name: "Buff",
+      type: "Token",
+      rarity: "Common",
+      includeWithoutProduct: true,
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/64b9df938587aa93a3d0769a349d9b0cc6942dc2-744x1039.png",
+      artist: "League Splash Team",
+    },
+    gold: {
+      number: "T05",
+      name: "Gold",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e566605fa989e12e91cd3d3e0b7985f7a8be8e74-744x1039.png",
+      artist: "Kudos Productions",
+    },
+    reflection: {
+      number: "T06",
+      name: "Reflection",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/80327b196c59841a67a65327974a93223a3c541a-744x1039.png",
+      artist: "Kudos Productions & Dark Glow",
+    },
+    sprite: {
+      number: "T07",
+      name: "Sprite",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1a90578f055e01515ebfb069dc3dbdba08d24da0-744x1039.png",
+      artist: "Envar Studio",
+    },
+    "xp tracker": {
+      number: "T08",
+      name: "XP Tracker",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/715d5bb52fc8ce0886b28f1c15fe89457e504fc9-744x1039.png",
+      artist: "Rafael Zanchetin",
+    },
   },
   VEN: {
+    empowered: {
+      number: "T01",
+      name: "Empowered",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://static0.srcdn.com/wordpress/wp-content/uploads/2026/07/ven-t01-empowered-t.jpg",
+      artist: "Six More Vodka",
+    },
+    gold: {
+      number: "T02",
+      name: "Gold",
+      type: "Token",
+      rarity: "Common",
+      includeWithoutProduct: true,
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e566605fa989e12e91cd3d3e0b7985f7a8be8e74-744x1039.png",
+      artist: "Kudos Productions",
+    },
+    mech: {
+      number: "T03",
+      name: "Mech",
+      type: "Token",
+      rarity: "Common",
+      imageUrl: "https://static.dotgg.gg/riftbound/cards/SFD-T01.webp",
+      artist: "Dao Trong Le",
+    },
+    recruit: {
+      number: "T04",
+      name: "Recruit",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/08b9ccf225fc2ae9eb9b5668e5361b09789210ee-744x1039.png",
+      artist: "Six More Vodka",
+    },
+    "shadow clone": {
+      number: "T05",
+      name: "Shadow Clone",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://static0.srcdn.com/wordpress/wp-content/uploads/2026/07/ven-t05-shadow-clone-t.jpg",
+      artist: "Six More Vodka",
+    },
+    tentacle: {
+      number: "T06",
+      name: "Tentacle",
+      type: "Token",
+      rarity: "Common",
+      imageUrl:
+        "https://static0.srcdn.com/wordpress/wp-content/uploads/2026/07/ven-t06-tentacle-t.jpg",
+      artist: "Michal Ivan",
+    },
     "kaisa survivor": {
       number: "SP1",
       rarity: "Showcase",
@@ -261,6 +494,81 @@ function specialCardDefinition(set: SetDefinition, key: string) {
   if (setSpecific) return setSpecific;
   if (set.code !== "OGN") return RUNE_DEFINITIONS[key];
   return undefined;
+}
+
+function runeVariantVisual(
+  set: SetDefinition,
+  key: string,
+  kind: VariantKind,
+): VariantVisual | undefined {
+  const rune = RUNE_DEFINITIONS[key];
+  const originsVisual = ORIGINS_RUNE_VISUALS[key];
+  if (!rune || !originsVisual) return undefined;
+
+  if (kind === "base" && (set.code === "SFD" || set.code === "UNL")) {
+    return originsVisual.base;
+  }
+
+  if (kind !== "alternate") return undefined;
+  if (set.code === "SFD") return originsVisual.alternate;
+  if (set.code === "UNL" || set.code === "VEN") {
+    return {
+      imageUrl: `https://static.dotgg.gg/riftbound/cards/${set.code}-${rune.number}a.webp`,
+      artist: null,
+    };
+  }
+
+  return undefined;
+}
+
+function specialVariantVisual(args: {
+  set: SetDefinition;
+  key: string;
+  kind: VariantKind;
+  definition: SpecialCardDefinition | undefined;
+}) {
+  const { set, key, kind, definition } = args;
+  if (kind === "base" && definition?.imageUrl) {
+    return {
+      imageUrl: definition.imageUrl,
+      artist: definition.artist ?? null,
+    } satisfies VariantVisual;
+  }
+
+  return runeVariantVisual(set, key, kind);
+}
+
+function definedVariantNumber(
+  definition: SpecialCardDefinition | undefined,
+  key: string,
+  kind: VariantKind,
+) {
+  if (!definition) return undefined;
+  if (key in RUNE_DEFINITIONS && kind === "alternate") {
+    return `${definition.number}a`;
+  }
+  return definition.number;
+}
+
+function orderedProductsForVariants(
+  set: SetDefinition,
+  key: string,
+  products: MarketProduct[],
+) {
+  const ordered = [...products].sort((a, b) => a.idProduct - b.idProduct);
+
+  // Cardmarket a créé les produits Showcase avant les produits Common pour
+  // Spiritforged et Unleashed. Leur ordre d'identifiant est donc inversé par
+  // rapport aux variantes affichées (normale, puis alternative).
+  if (
+    key in RUNE_DEFINITIONS &&
+    ordered.length === 2 &&
+    (set.code === "SFD" || set.code === "UNL")
+  ) {
+    ordered.reverse();
+  }
+
+  return ordered;
 }
 
 function isOriginsNumberedToken(card: RawCard | null, set: SetDefinition) {
@@ -528,8 +836,10 @@ export function buildCatalog(args: {
 
     if (drafts.length === 0) continue;
 
-    const productsForVariants = [...groupedProducts].sort(
-      (a, b) => a.idProduct - b.idProduct,
+    const productsForVariants = orderedProductsForVariants(
+      set,
+      key,
+      groupedProducts,
     );
     const fallbackCard =
       drafts.find((draft) => draft.kind === "base" && draft.card)?.card ??
@@ -552,7 +862,14 @@ export function buildCatalog(args: {
       const product = productsForVariants[index] ?? null;
       const price = product ? priceByProduct.get(product.idProduct) : undefined;
       const rawVariantName = draft.card?.name ?? product?.name ?? rowName;
+      const variantVisual = specialVariantVisual({
+        set,
+        key,
+        kind: draft.kind,
+        definition,
+      });
       const inheritedImage =
+        variantVisual?.imageUrl ??
         draft.card?.media.image_url ??
         (draft.kind === "signature"
           ? drafts.find((item) => item.kind === "overnumbered")?.card?.media
@@ -571,7 +888,7 @@ export function buildCatalog(args: {
             ? cleanOriginsTokenName(rawVariantName)
             : displayName(rawVariantName)),
         number:
-          definition?.number ??
+          definedVariantNumber(definition, key, draft.kind) ??
           (draft.card ? collectorCode(draft.card, set) : "—"),
         kind: draft.kind,
         rarity:
@@ -585,7 +902,11 @@ export function buildCatalog(args: {
               (rowType === "Rune" || rowType === "Token" ? "Special" : "—"),
         label: variantLabel(draft.kind, index),
         imageUrl: inheritedImage,
-        artist: draft.card?.media.artist ?? fallbackCard?.media.artist ?? null,
+        artist:
+          variantVisual?.artist ??
+          draft.card?.media.artist ??
+          fallbackCard?.media.artist ??
+          null,
         productId: product?.idProduct ?? null,
         standard: standardSeries(price),
         foil: foilSeries(price),
@@ -662,7 +983,7 @@ export function buildCatalog(args: {
         (isExtra ? "Special" : "—"),
       domains: fallbackCard?.classification.domain ?? [],
       imageUrl: baseVariant?.imageUrl ?? variants[0]?.imageUrl ?? null,
-      artist: fallbackCard?.media.artist ?? null,
+      artist: baseVariant?.artist ?? fallbackCard?.media.artist ?? null,
       cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(rowName)}/Versions`,
       isExtra,
       isNumbered: variants.some(
