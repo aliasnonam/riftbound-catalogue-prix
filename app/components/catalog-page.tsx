@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -115,6 +117,230 @@ function modeLabel(mode: PriceMode) {
   return "Moyenne 30 j";
 }
 
+type PreviewPlacement = {
+  left: number;
+  top: number;
+  width: number;
+};
+
+type PreviewState =
+  | { mode: "hover"; placement: PreviewPlacement }
+  | { mode: "dialog" };
+
+const CARD_ASPECT_RATIO = 63 / 88;
+
+function previewPlacement(rect: DOMRect): PreviewPlacement {
+  const margin = 14;
+  const gap = 18;
+  const maximumWidth = Math.min(430, window.innerWidth - margin * 2);
+  const maximumHeight = Math.min(660, window.innerHeight - margin * 2);
+  const width = Math.min(maximumWidth, maximumHeight * CARD_ASPECT_RATIO);
+  const height = width / CARD_ASPECT_RATIO;
+
+  let left: number;
+  if (rect.right + gap + width <= window.innerWidth - margin) {
+    left = rect.right + gap;
+  } else if (rect.left - gap - width >= margin) {
+    left = rect.left - gap - width;
+  } else {
+    left = Math.min(
+      Math.max(margin, rect.left + rect.width / 2 - width / 2),
+      window.innerWidth - margin - width,
+    );
+  }
+
+  const top = Math.min(
+    Math.max(margin, rect.top + rect.height / 2 - height / 2),
+    window.innerHeight - margin - height,
+  );
+
+  return { left, top, width };
+}
+
+function CardPreviewThumb({
+  className,
+  imageUrl,
+  name,
+}: {
+  className: string;
+  imageUrl: string | null;
+  name: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const suppressFocusPreviewRef = useRef(false);
+
+  function openHoverPreview() {
+    if (!imageUrl || failed || !triggerRef.current) return;
+    setPreview({
+      mode: "hover",
+      placement: previewPlacement(triggerRef.current.getBoundingClientRect()),
+    });
+  }
+
+  function closePreview(restoreFocus = false) {
+    setPreview(null);
+    if (restoreFocus) {
+      suppressFocusPreviewRef.current = true;
+      window.requestAnimationFrame(() => {
+        triggerRef.current?.focus();
+        suppressFocusPreviewRef.current = false;
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (!preview) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab" && preview.mode === "dialog") {
+        event.preventDefault();
+        closeRef.current?.focus();
+        return;
+      }
+      if (event.key !== "Escape") return;
+      const restoreFocus = preview.mode === "dialog";
+      setPreview(null);
+      if (restoreFocus) {
+        suppressFocusPreviewRef.current = true;
+        window.requestAnimationFrame(() => {
+          triggerRef.current?.focus();
+          suppressFocusPreviewRef.current = false;
+        });
+      }
+    };
+    const handleViewportChange = () => {
+      if (preview.mode === "hover") setPreview(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+
+    let focusFrame = 0;
+    const previousBodyOverflow = document.body.style.overflow;
+    if (preview.mode === "dialog") {
+      document.body.style.overflow = "hidden";
+      focusFrame = window.requestAnimationFrame(() => closeRef.current?.focus());
+    }
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+      if (focusFrame) window.cancelAnimationFrame(focusFrame);
+      if (preview.mode === "dialog") {
+        document.body.style.overflow = previousBodyOverflow;
+      }
+    };
+  }, [preview]);
+
+  if (!imageUrl || failed) {
+    return (
+      <div className={`${className} card-preview-unavailable`}>
+        <span aria-hidden="true">◇</span>
+      </div>
+    );
+  }
+
+  const previewLayer = preview
+    ? createPortal(
+        preview.mode === "hover" ? (
+          <div
+            className="card-preview-popover"
+            style={preview.placement}
+            role="img"
+            aria-label={`Aperçu agrandi de la carte ${name}`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageUrl} alt="" />
+          </div>
+        ) : (
+          <div
+            className="card-preview-backdrop"
+            role="presentation"
+            onPointerDown={() => closePreview(true)}
+          >
+            <div
+              className="card-preview-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Aperçu agrandi de la carte ${name}`}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <button
+                ref={closeRef}
+                className="card-preview-close"
+                type="button"
+                aria-label="Fermer l’aperçu"
+                onClick={() => closePreview(true)}
+              >
+                ×
+              </button>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={imageUrl} alt={`Carte ${name}`} />
+              <p>{name}</p>
+            </div>
+          </div>
+        ),
+        document.body,
+      )
+    : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        className={`${className} card-preview-trigger`}
+        type="button"
+        aria-label={`Agrandir la carte ${name}`}
+        title="Survoler pour agrandir · cliquer pour ouvrir"
+        onPointerEnter={() => {
+          if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+            openHoverPreview();
+          }
+        }}
+        onPointerLeave={() => {
+          setPreview((current) =>
+            current?.mode === "hover" ? null : current,
+          );
+        }}
+        onFocus={() => {
+          if (
+            !suppressFocusPreviewRef.current &&
+            window.matchMedia("(hover: hover) and (pointer: fine)").matches
+          ) {
+            openHoverPreview();
+          }
+        }}
+        onBlur={() => {
+          setPreview((current) =>
+            current?.mode === "hover" ? null : current,
+          );
+        }}
+        onClick={() => setPreview({ mode: "dialog" })}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={imageUrl}
+          alt=""
+          loading="lazy"
+          onError={() => {
+            setFailed(true);
+            setPreview(null);
+          }}
+        />
+        <span className="card-preview-icon" aria-hidden="true">
+          ⌕
+        </span>
+      </button>
+      {previewLayer}
+    </>
+  );
+}
+
 function PriceCell({
   row,
   column,
@@ -181,22 +407,11 @@ function VariantDetails({ row, mode }: { row: CatalogRow; mode: PriceMode }) {
       <div className="variant-grid">
         {row.variants.map((variant) => (
           <article className="variant-card" key={variant.id}>
-            <div className="variant-thumb">
-              {variant.imageUrl ? (
-                // Riot's official CDN image surfaced by the card catalogue.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={variant.imageUrl}
-                  alt=""
-                  loading="lazy"
-                  onError={(event) => {
-                    event.currentTarget.style.display = "none";
-                  }}
-                />
-              ) : (
-                <span aria-hidden="true">◇</span>
-              )}
-            </div>
+            <CardPreviewThumb
+              className="variant-thumb"
+              imageUrl={variant.imageUrl}
+              name={`${variant.name} — ${kindLabel(variant.kind)}`}
+            />
             <div className="variant-copy">
               <div className="variant-title-line">
                 <span className={`variant-kind kind-${variant.kind}`}>
@@ -558,7 +773,16 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               <strong>{filteredRows.length}</strong> carte
               {filteredRows.length > 1 ? "s" : ""}
             </span>
-            <span>{modeLabel(priceMode)} · EUR</span>
+            <span className="result-meta">
+              <span className="preview-hint preview-hint-hover">
+                Survole une carte pour l’agrandir
+              </span>
+              <span className="preview-hint preview-hint-touch">
+                Touche une carte pour l’agrandir
+              </span>
+              <span aria-hidden="true">·</span>
+              {modeLabel(priceMode)} · EUR
+            </span>
           </div>
 
           {loading ? <CatalogLoading /> : null}
@@ -593,21 +817,11 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                     <article className={`catalog-row ${isOpen ? "is-open" : ""}`} key={row.id}>
                       <div className="catalog-row-main">
                         <div className="card-identity">
-                          <div className="card-thumb">
-                            {row.imageUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={row.imageUrl}
-                                alt={`Carte ${row.name}`}
-                                loading="lazy"
-                                onError={(event) => {
-                                  event.currentTarget.style.display = "none";
-                                }}
-                              />
-                            ) : (
-                              <span aria-hidden="true">◇</span>
-                            )}
-                          </div>
+                          <CardPreviewThumb
+                            className="card-thumb"
+                            imageUrl={row.imageUrl}
+                            name={row.name}
+                          />
                           <div className="card-copy">
                             <div className="card-kicker">
                               <span className="collector-number">{row.number}</span>
