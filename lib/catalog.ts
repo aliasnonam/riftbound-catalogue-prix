@@ -74,6 +74,7 @@ export type CatalogVariant = {
   name: string;
   number: string;
   kind: VariantKind;
+  rarity: string;
   label: string;
   imageUrl: string | null;
   artist: string | null;
@@ -94,6 +95,7 @@ export type CatalogRow = {
   artist: string | null;
   cardmarketUrl: string;
   isExtra: boolean;
+  isOriginsReprint: boolean;
   variants: CatalogVariant[];
 };
 
@@ -286,6 +288,11 @@ export function buildCatalog(args: {
   sourceStatus: "live" | "snapshot";
 }): CatalogPayload {
   const { set } = args;
+  const originsNames = new Set(
+    args.cards
+      .filter((card) => card.set.set_id === "OGN")
+      .map((card) => normalizeName(card.name)),
+  );
   const cards = args.cards.filter((card) => card.set.set_id === set.code);
   const products = args.products
     .filter((product) => product.idExpansion === set.expansionId)
@@ -355,6 +362,14 @@ export function buildCatalog(args: {
         name: displayName(draft.card?.name ?? product?.name ?? rowName),
         number: draft.card ? collectorCode(draft.card, set) : "—",
         kind: draft.kind,
+        rarity:
+          draft.kind === "alternate" ||
+          draft.kind === "overnumbered" ||
+          draft.kind === "signature"
+            ? "Showcase"
+            : draft.card?.classification.rarity ??
+              fallbackCard?.classification.rarity ??
+              (rowType === "Rune" || rowType === "Token" ? "Special" : "—"),
         label: variantLabel(draft.kind, index),
         imageUrl: inheritedImage,
         artist: draft.card?.media.artist ?? fallbackCard?.media.artist ?? null,
@@ -365,7 +380,11 @@ export function buildCatalog(args: {
     });
 
     const baseVariant = variants.find((variant) => variant.kind === "base");
-    const isExtra = rowType === "Rune" || rowType === "Token";
+    const fallbackCode = fallbackCard ? collectorCode(fallbackCard, set) : "";
+    const isExtra =
+      rowType === "Rune" ||
+      rowType === "Token" ||
+      /^[RT]\d/i.test(fallbackCode);
 
     const shouldSplitBasePrints =
       drafts.length > 1 &&
@@ -389,7 +408,11 @@ export function buildCatalog(args: {
           imageUrl: variant.imageUrl,
           artist: card.media.artist,
           cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(fallbackProduct?.name ?? splitName)}/Versions`,
-          isExtra: splitType === "Rune" || splitType === "Token",
+          isExtra:
+            splitType === "Rune" ||
+            splitType === "Token" ||
+            /^[RT]\d/i.test(collectorCode(card, set)),
+          isOriginsReprint: false,
           variants: [variant],
         });
       });
@@ -408,6 +431,11 @@ export function buildCatalog(args: {
       artist: fallbackCard?.media.artist ?? null,
       cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(rowName)}/Versions`,
       isExtra,
+      isOriginsReprint:
+        set.code === "SFD" &&
+        originsNames.has(key) &&
+        variants.some((variant) => variant.kind === "overnumbered") &&
+        !variants.some((variant) => variant.kind === "base"),
       variants,
     });
   }

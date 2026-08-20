@@ -31,6 +31,7 @@ type FilterKind =
   | "numbered"
   | "alternate"
   | "overnumbered"
+  | "origins-reprint"
   | "signature"
   | "extras";
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
@@ -69,11 +70,12 @@ const RARITY_ORDER = [
   "—",
 ];
 
-const FILTERS: { id: FilterKind; label: string }[] = [
+const FILTERS: { id: FilterKind; label: string; sets?: SetCode[] }[] = [
   { id: "all", label: "Toutes" },
   { id: "numbered", label: "Set numéroté" },
   { id: "alternate", label: "Alternatives" },
   { id: "overnumbered", label: "Outnumbered" },
+  { id: "origins-reprint", label: "OGN Reprint", sets: ["SFD"] },
   { id: "signature", label: "Signées" },
   { id: "extras", label: "Runes & tokens" },
 ];
@@ -91,8 +93,54 @@ function variantsOf(row: CatalogRow, kind: VariantKind) {
   return row.variants.filter((variant) => variant.kind === kind);
 }
 
-function maxPrice(row: CatalogRow, mode: PriceMode) {
-  const values = row.variants.flatMap((variant) => [
+function variantsForFilter(row: CatalogRow, filter: FilterKind) {
+  if (filter === "all") return row.variants;
+  if (filter === "numbered") {
+    return row.isExtra ? [] : variantsOf(row, "base");
+  }
+  if (filter === "extras") return row.isExtra ? row.variants : [];
+  if (filter === "origins-reprint") {
+    return row.isOriginsReprint
+      ? row.variants.filter(
+          (variant) =>
+            variant.kind === "overnumbered" || variant.kind === "signature",
+        )
+      : [];
+  }
+
+  return variantsOf(row, filter);
+}
+
+function variantForDisplay(
+  row: CatalogRow,
+  filter: FilterKind,
+  rarity: string,
+) {
+  const candidates = variantsForFilter(row, filter);
+  if (rarity !== "all") {
+    const rarityMatch = candidates.find(
+      (variant) => variant.rarity === rarity,
+    );
+    if (rarityMatch) return rarityMatch;
+  }
+
+  return (
+    candidates[0] ??
+    row.variants.find((variant) => variant.kind === "base") ??
+    row.variants[0]
+  );
+}
+
+function maxPrice(
+  row: CatalogRow,
+  mode: PriceMode,
+  filter: FilterKind,
+  rarity: string,
+) {
+  const relevantVariants = variantsForFilter(row, filter).filter(
+    (variant) => rarity === "all" || variant.rarity === rarity,
+  );
+  const values = relevantVariants.flatMap((variant) => [
     metricValue(variant.standard, mode),
     metricValue(variant.foil, mode),
   ]);
@@ -466,6 +514,10 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [priceMode, setPriceMode] = useState<PriceMode>("low");
   const [visibleCount, setVisibleCount] = useState(48);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const activeFilterKind =
+    setCode !== "SFD" && filterKind === "origins-reprint"
+      ? "all"
+      : filterKind;
 
   const loadCatalog = useCallback(
     async (refresh = false) => {
@@ -523,33 +575,36 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
 
   const rarities = useMemo(() => {
     if (!payload) return [];
-    return [...new Set(payload.rows.map((row) => row.rarity))].sort(
-      (a, b) => RARITY_ORDER.indexOf(a) - RARITY_ORDER.indexOf(b),
-    );
+    return [
+      ...new Set(
+        payload.rows.flatMap((row) =>
+          row.variants.map((variant) => variant.rarity),
+        ),
+      ),
+    ].sort((a, b) => RARITY_ORDER.indexOf(a) - RARITY_ORDER.indexOf(b));
   }, [payload]);
 
   const filteredRows = useMemo(() => {
     if (!payload) return [];
     const normalizedQuery = query.trim().toLocaleLowerCase("fr");
     const rows = payload.rows.filter((row) => {
+      const relevantVariants = variantsForFilter(row, activeFilterKind);
       const matchesQuery =
         !normalizedQuery ||
         row.name.toLocaleLowerCase("fr").includes(normalizedQuery) ||
         row.number.toLocaleLowerCase("fr").includes(normalizedQuery) ||
+        row.variants.some(
+          (variant) =>
+            variant.name.toLocaleLowerCase("fr").includes(normalizedQuery) ||
+            variant.number.toLocaleLowerCase("fr").includes(normalizedQuery),
+        ) ||
         row.domains.some((domain) =>
           domain.toLocaleLowerCase("fr").includes(normalizedQuery),
         );
-      const matchesRarity = rarity === "all" || row.rarity === rarity;
-      const matchesKind =
-        filterKind === "all" ||
-        (filterKind === "numbered" && !row.isExtra) ||
-        (filterKind === "extras" && row.isExtra) ||
-        (filterKind === "alternate" &&
-          row.variants.some((variant) => variant.kind === "alternate")) ||
-        (filterKind === "overnumbered" &&
-          row.variants.some((variant) => variant.kind === "overnumbered")) ||
-        (filterKind === "signature" &&
-          row.variants.some((variant) => variant.kind === "signature"));
+      const matchesKind = relevantVariants.length > 0;
+      const matchesRarity =
+        rarity === "all" ||
+        relevantVariants.some((variant) => variant.rarity === rarity);
 
       return matchesQuery && matchesRarity && matchesKind;
     });
@@ -557,11 +612,18 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     return rows.sort((a, b) => {
       if (sortMode === "name") return a.name.localeCompare(b.name, "fr");
       if (sortMode === "price-desc") {
-        return maxPrice(b, priceMode) - maxPrice(a, priceMode);
+        return (
+          maxPrice(b, priceMode, activeFilterKind, rarity) -
+          maxPrice(a, priceMode, activeFilterKind, rarity)
+        );
       }
       if (sortMode === "price-asc") {
-        const aValue = maxPrice(a, priceMode) || Number.POSITIVE_INFINITY;
-        const bValue = maxPrice(b, priceMode) || Number.POSITIVE_INFINITY;
+        const aValue =
+          maxPrice(a, priceMode, activeFilterKind, rarity) ||
+          Number.POSITIVE_INFINITY;
+        const bValue =
+          maxPrice(b, priceMode, activeFilterKind, rarity) ||
+          Number.POSITIVE_INFINITY;
         return aValue - bValue;
       }
       if (a.collectorNumber !== b.collectorNumber) {
@@ -569,7 +631,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       }
       return a.name.localeCompare(b.name, "fr");
     });
-  }, [payload, query, rarity, filterKind, sortMode, priceMode]);
+  }, [payload, query, rarity, activeFilterKind, sortMode, priceMode]);
 
   const visibleRows = filteredRows.slice(0, visibleCount);
   const style = {
@@ -752,11 +814,13 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               </label>
             </div>
             <div className="filter-tabs" role="group" aria-label="Type de carte">
-              {FILTERS.map((filter) => (
+              {FILTERS.filter(
+                (filter) => !filter.sets || filter.sets.includes(setCode),
+              ).map((filter) => (
                 <button
                   type="button"
                   key={filter.id}
-                  className={filterKind === filter.id ? "is-active" : ""}
+                  className={activeFilterKind === filter.id ? "is-active" : ""}
                   onClick={() => {
                     setFilterKind(filter.id);
                     setVisibleCount(48);
@@ -813,21 +877,37 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               <div className="catalog-rows">
                 {visibleRows.map((row) => {
                   const isOpen = expanded.has(row.id);
+                  const displayVariant = variantForDisplay(
+                    row,
+                    activeFilterKind,
+                    rarity,
+                  );
+                  const displayRarity = displayVariant?.rarity ?? row.rarity;
+                  const displayNumber =
+                    displayVariant?.number && displayVariant.number !== "—"
+                      ? displayVariant.number
+                      : row.number;
                   return (
                     <article className={`catalog-row ${isOpen ? "is-open" : ""}`} key={row.id}>
                       <div className="catalog-row-main">
                         <div className="card-identity">
                           <CardPreviewThumb
                             className="card-thumb"
-                            imageUrl={row.imageUrl}
-                            name={row.name}
+                            imageUrl={displayVariant?.imageUrl ?? row.imageUrl}
+                            name={displayVariant?.name ?? row.name}
                           />
                           <div className="card-copy">
                             <div className="card-kicker">
-                              <span className="collector-number">{row.number}</span>
-                              <span className={`rarity rarity-${row.rarity.toLowerCase()}`}>
-                                {rarityLabel(row.rarity)}
+                              <span className="collector-number">{displayNumber}</span>
+                              <span
+                                className={`rarity rarity-${displayRarity.toLowerCase()}`}
+                              >
+                                {rarityLabel(displayRarity)}
                               </span>
+                              {row.isOriginsReprint &&
+                              activeFilterKind === "origins-reprint" ? (
+                                <span className="reprint-badge">OGN Reprint</span>
+                              ) : null}
                             </div>
                             <h3>{row.name}</h3>
                             <p>
