@@ -16,6 +16,7 @@ import type {
   CatalogRow,
   CatalogVariant,
   PriceSeries,
+  SpecialCategory,
   VariantKind,
 } from "@/lib/catalog";
 import {
@@ -31,10 +32,12 @@ type FilterKind =
   | "numbered"
   | "alternate"
   | "overnumbered"
-  | "origins-reprint"
   | "signature"
-  | "extras";
+  | "extras"
+  | SpecialCategory;
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
+
+const PAGE_SIZE = 50;
 
 const EURO = new Intl.NumberFormat("fr-FR", {
   style: "currency",
@@ -70,15 +73,60 @@ const RARITY_ORDER = [
   "—",
 ];
 
-const FILTERS: { id: FilterKind; label: string; sets?: SetCode[] }[] = [
-  { id: "all", label: "Toutes" },
-  { id: "numbered", label: "Set numéroté" },
-  { id: "alternate", label: "Alternatives" },
-  { id: "overnumbered", label: "Outnumbered" },
-  { id: "origins-reprint", label: "OGN Reprint", sets: ["SFD"] },
-  { id: "signature", label: "Signées" },
-  { id: "extras", label: "Runes & tokens" },
-];
+type FilterDefinition = { id: FilterKind; label: string };
+
+const FILTERS_BY_SET: Record<SetCode, FilterDefinition[]> = {
+  OGN: [
+    { id: "all", label: "Toutes" },
+    { id: "numbered", label: "Set numéroté" },
+    { id: "alternate", label: "Alternatives" },
+    { id: "overnumbered", label: "Outnumbered" },
+    { id: "signature", label: "Signées" },
+    { id: "extras", label: "Runes & tokens" },
+  ],
+  SFD: [
+    { id: "all", label: "Toutes" },
+    { id: "numbered", label: "Set numéroté" },
+    { id: "alternate", label: "Alternatives" },
+    { id: "overnumbered", label: "Outnumbered" },
+    { id: "ogn-reprint", label: "OGN Reprint" },
+    { id: "signature", label: "Signées" },
+    { id: "extras", label: "Runes & tokens" },
+  ],
+  UNL: [
+    { id: "all", label: "Toutes" },
+    { id: "numbered", label: "Set numéroté" },
+    { id: "alternate", label: "Alternatives" },
+    { id: "overnumbered", label: "Outnumbered" },
+    { id: "signature", label: "Signées" },
+    { id: "ogn-reprint", label: "OGN Reprint" },
+    { id: "sfd-reprint", label: "SFD Reprint" },
+    { id: "nashor", label: "Nashor" },
+    { id: "extras", label: "Runes & tokens" },
+  ],
+  VEN: [
+    { id: "all", label: "Toutes" },
+    { id: "numbered", label: "Set numéroté" },
+    { id: "alternate", label: "Alternatives" },
+    { id: "overnumbered", label: "Outnumbered" },
+    { id: "signature", label: "Signées" },
+    { id: "ogn-reprint", label: "OGN Reprint" },
+    { id: "sfd-reprint", label: "SFD Reprint" },
+    { id: "unl-reprint", label: "UNL Reprint" },
+    { id: "crystal-rose", label: "Crystal Rose" },
+    { id: "extras", label: "Runes & tokens" },
+  ],
+};
+
+function isSpecialFilter(filter: FilterKind): filter is SpecialCategory {
+  return (
+    filter === "ogn-reprint" ||
+    filter === "sfd-reprint" ||
+    filter === "unl-reprint" ||
+    filter === "nashor" ||
+    filter === "crystal-rose"
+  );
+}
 
 function metricValue(series: PriceSeries, mode: PriceMode) {
   const value = series[mode];
@@ -96,16 +144,16 @@ function variantsOf(row: CatalogRow, kind: VariantKind) {
 function variantsForFilter(row: CatalogRow, filter: FilterKind) {
   if (filter === "all") return row.variants;
   if (filter === "numbered") {
-    return row.isExtra ? [] : variantsOf(row, "base");
+    return row.isNumbered ? variantsOf(row, "base") : [];
   }
   if (filter === "extras") return row.isExtra ? row.variants : [];
-  if (filter === "origins-reprint") {
-    return row.isOriginsReprint
-      ? row.variants.filter(
-          (variant) =>
-            variant.kind === "overnumbered" || variant.kind === "signature",
-        )
-      : [];
+  if (isSpecialFilter(filter)) {
+    if (row.specialCategory !== filter) return [];
+    if (filter === "crystal-rose") return variantsOf(row, "alternate");
+    return row.variants.filter(
+      (variant) =>
+        variant.kind === "overnumbered" || variant.kind === "signature",
+    );
   }
 
   return variantsOf(row, filter);
@@ -512,12 +560,14 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [filterKind, setFilterKind] = useState<FilterKind>("all");
   const [sortMode, setSortMode] = useState<SortMode>("number");
   const [priceMode, setPriceMode] = useState<PriceMode>("low");
-  const [visibleCount, setVisibleCount] = useState(48);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const activeFilterKind =
-    setCode !== "SFD" && filterKind === "origins-reprint"
-      ? "all"
-      : filterKind;
+  const availableFilters = FILTERS_BY_SET[setCode];
+  const activeFilterKind = availableFilters.some(
+    (filter) => filter.id === filterKind,
+  )
+    ? filterKind
+    : "all";
 
   const loadCatalog = useCallback(
     async (refresh = false) => {
@@ -626,14 +676,19 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
           Number.POSITIVE_INFINITY;
         return aValue - bValue;
       }
-      if (a.collectorNumber !== b.collectorNumber) {
-        return a.collectorNumber - b.collectorNumber;
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
       }
       return a.name.localeCompare(b.name, "fr");
     });
   }, [payload, query, rarity, activeFilterKind, sortMode, priceMode]);
 
   const visibleRows = filteredRows.slice(0, visibleCount);
+  const remainingCount = Math.max(0, filteredRows.length - visibleRows.length);
+  const nextBatchCount = Math.min(PAGE_SIZE, remainingCount);
+  const activeFilterLabel =
+    availableFilters.find((filter) => filter.id === activeFilterKind)?.label ??
+    "Toutes";
   const style = {
     "--set-accent": set.accent,
     "--set-accent-soft": set.accentSoft,
@@ -759,7 +814,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                   value={query}
                   onChange={(event) => {
                     setQuery(event.target.value);
-                    setVisibleCount(48);
+                    setVisibleCount(PAGE_SIZE);
                   }}
                   placeholder="Nom, numéro, domaine…"
                 />
@@ -770,7 +825,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                   value={rarity}
                   onChange={(event) => {
                     setRarity(event.target.value);
-                    setVisibleCount(48);
+                    setVisibleCount(PAGE_SIZE);
                   }}
                 >
                   <option value="all">Toutes</option>
@@ -787,7 +842,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                   value={sortMode}
                   onChange={(event) => {
                     setSortMode(event.target.value as SortMode);
-                    setVisibleCount(48);
+                    setVisibleCount(PAGE_SIZE);
                   }}
                 >
                   <option value="number">Numéro croissant</option>
@@ -800,12 +855,10 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 <span>Valeur affichée</span>
                 <select
                   value={priceMode}
-                  onChange={(event) =>
-                    {
-                      setPriceMode(event.target.value as PriceMode);
-                      setVisibleCount(48);
-                    }
-                  }
+                  onChange={(event) => {
+                    setPriceMode(event.target.value as PriceMode);
+                    setVisibleCount(PAGE_SIZE);
+                  }}
                 >
                   <option value="low">Prix minimum</option>
                   <option value="trend">Tendance Cardmarket</option>
@@ -814,16 +867,14 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               </label>
             </div>
             <div className="filter-tabs" role="group" aria-label="Type de carte">
-              {FILTERS.filter(
-                (filter) => !filter.sets || filter.sets.includes(setCode),
-              ).map((filter) => (
+              {availableFilters.map((filter) => (
                 <button
                   type="button"
                   key={filter.id}
                   className={activeFilterKind === filter.id ? "is-active" : ""}
                   onClick={() => {
                     setFilterKind(filter.id);
-                    setVisibleCount(48);
+                    setVisibleCount(PAGE_SIZE);
                   }}
                 >
                   {filter.label}
@@ -904,9 +955,11 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                               >
                                 {rarityLabel(displayRarity)}
                               </span>
-                              {row.isOriginsReprint &&
-                              activeFilterKind === "origins-reprint" ? (
-                                <span className="reprint-badge">OGN Reprint</span>
+                              {isSpecialFilter(activeFilterKind) &&
+                              row.specialCategory === activeFilterKind ? (
+                                <span className="reprint-badge">
+                                  {activeFilterLabel}
+                                </span>
                               ) : null}
                             </div>
                             <h3>{row.name}</h3>
@@ -945,17 +998,32 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 </div>
               ) : null}
 
-              {visibleCount < filteredRows.length ? (
-                <button
-                  className="load-more"
-                  type="button"
-                  onClick={() => setVisibleCount((count) => count + 48)}
-                >
-                  Afficher 48 cartes de plus
-                  <span>
+              {remainingCount > 0 ? (
+                <div className="load-controls">
+                  <button
+                    className="load-more"
+                    type="button"
+                    onClick={() =>
+                      setVisibleCount((count) => count + PAGE_SIZE)
+                    }
+                  >
+                    Afficher {nextBatchCount} carte
+                    {nextBatchCount > 1 ? "s" : ""} de plus
+                  </button>
+                  <span className="load-separator" aria-hidden="true">
+                    ·
+                  </span>
+                  <button
+                    className="show-all"
+                    type="button"
+                    onClick={() => setVisibleCount(filteredRows.length)}
+                  >
+                    Tout afficher
+                  </button>
+                  <span className="load-progress">
                     {visibleRows.length} / {filteredRows.length}
                   </span>
-                </button>
+                </div>
               ) : null}
             </div>
           ) : null}

@@ -649,7 +649,7 @@ a { color: inherit; text-decoration: none; }
 .variant-prices span { display: flex; flex-direction: column; gap: 2px; color: #6f7681; font-size: 7px; text-transform: uppercase; }
 .variant-prices b { color: var(--muted-strong); font-family: ui-monospace, monospace; font-size: 9px; font-weight: 700; text-transform: none; }
 
-.load-more {
+.load-controls {
   display: flex;
   width: calc(100% - 28px);
   min-height: 52px;
@@ -660,12 +660,18 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(255,255,255,.025);
+}
+.load-more, .show-all {
+  border: 0;
+  background: transparent;
   color: var(--muted-strong);
   font-size: 11px;
   font-weight: 700;
 }
-.load-more:hover { border-color: color-mix(in srgb, var(--set-accent) 32%, transparent); background: var(--set-accent-soft); color: var(--text); }
-.load-more span { color: #6e7580; font-family: ui-monospace, monospace; font-size: 9px; }
+.load-controls:hover { border-color: color-mix(in srgb, var(--set-accent) 32%, transparent); background: var(--set-accent-soft); }
+.load-more:hover, .show-all:hover { color: var(--text); }
+.load-separator { color: var(--set-accent); }
+.load-progress { margin-left: 5px; color: #6e7580; font-family: ui-monospace, monospace; font-size: 9px; }
 .empty-state { display: grid; min-height: 280px; place-items: center; align-content: center; padding: 40px; text-align: center; }
 .empty-state > span { color: var(--set-accent); font-size: 31px; }
 .empty-state h3 { margin: 14px 0 5px; font-family: Georgia, serif; font-weight: 500; }
@@ -760,6 +766,8 @@ a { color: inherit; text-decoration: none; }
   .variant-panel-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
   .variant-grid { grid-template-columns: 1fr; }
   .result-line { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .load-controls { flex-wrap: wrap; gap: 8px; padding: 10px; }
+  .load-progress { width: 100%; margin-left: 0; text-align: center; }
   .skeleton-row { grid-template-columns: 52px 1fr; }
   .skeleton-price { display: none; }
   .pricing-note { padding: 15px; }
