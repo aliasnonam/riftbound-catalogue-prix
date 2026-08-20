@@ -1115,7 +1115,7 @@ export function buildCatalog(args: {
         specialEdition: specialEditionForRow(set, number, definition),
         sortOrder: collectorSortOrder(number, collectorNumber),
         variants: lineVariants,
-        associatedVariants: line === "regular" ? variants : lineVariants,
+        associatedVariants: variants,
       });
     }
 

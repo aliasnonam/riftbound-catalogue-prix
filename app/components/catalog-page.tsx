@@ -148,6 +148,10 @@ function variantsOf(row: CatalogRow, kind: VariantKind) {
   return row.variants.filter((variant) => variant.kind === kind);
 }
 
+function associatedVariantsOf(row: CatalogRow, kind: VariantKind) {
+  return row.associatedVariants.filter((variant) => variant.kind === kind);
+}
+
 function variantsForFilter(row: CatalogRow, filter: FilterKind) {
   if (filter === "all") return row.variants;
   if (filter === "numbered") {
@@ -196,6 +200,14 @@ function maxPrice(
     (variant) => rarity === "all" || variant.rarity === rarity,
   );
   const values = relevantVariants.flatMap((variant) => [
+    metricValue(variant.standard, mode),
+    metricValue(variant.foil, mode),
+  ]);
+  return Math.max(0, ...values.filter((value): value is number => value !== null));
+}
+
+function associatedMaxPrice(row: CatalogRow, mode: PriceMode) {
+  const values = row.associatedVariants.flatMap((variant) => [
     metricValue(variant.standard, mode),
     metricValue(variant.foil, mode),
   ]);
@@ -453,7 +465,9 @@ function PriceCell({
   column: "normal" | "foil" | "alternate" | "overnumbered" | "signature";
   mode: PriceMode;
 }) {
-  const base = row.variants.find((variant) => variant.kind === "base");
+  const base = row.associatedVariants.find(
+    (variant) => variant.kind === "base",
+  );
   let variants: CatalogVariant[] = [];
   let primary: number | null = null;
   let secondary: number | null = null;
@@ -469,7 +483,7 @@ function PriceCell({
         : column === "overnumbered"
           ? "overnumbered"
           : "signature";
-    variants = variantsOf(row, kind);
+    variants = associatedVariantsOf(row, kind);
     const first = variants[0];
     if (first) {
       primary =
@@ -669,10 +683,10 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     return rows.sort((a, b) => {
       if (sortMode === "name") return a.name.localeCompare(b.name, "fr");
       if (sortMode === "price-desc") {
-        return (
-          maxPrice(b, priceMode, activeFilterKind, rarity) -
-          maxPrice(a, priceMode, activeFilterKind, rarity)
-        );
+        const difference =
+          associatedMaxPrice(b, priceMode) - associatedMaxPrice(a, priceMode);
+        if (difference !== 0) return difference;
+        return a.sortOrder - b.sortOrder;
       }
       if (sortMode === "price-asc") {
         const aValue =
