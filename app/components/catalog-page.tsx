@@ -128,6 +128,13 @@ function isSpecialFilter(filter: FilterKind): filter is SpecialCategory {
   );
 }
 
+function matchesSpecialFilter(row: CatalogRow, filter: SpecialCategory) {
+  if (filter === "ogn-reprint") return row.originSet === "OGN";
+  if (filter === "sfd-reprint") return row.originSet === "SFD";
+  if (filter === "unl-reprint") return row.originSet === "UNL";
+  return row.specialEdition === filter;
+}
+
 function metricValue(series: PriceSeries, mode: PriceMode) {
   const value = series[mode];
   return value !== null && value > 0 ? value : null;
@@ -148,7 +155,7 @@ function variantsForFilter(row: CatalogRow, filter: FilterKind) {
   }
   if (filter === "extras") return row.isExtra ? row.variants : [];
   if (isSpecialFilter(filter)) {
-    if (row.specialCategory !== filter) return [];
+    if (!matchesSpecialFilter(row, filter)) return [];
     if (filter === "crystal-rose") return variantsOf(row, "alternate");
     return row.variants.filter(
       (variant) =>
@@ -956,7 +963,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                                 {rarityLabel(displayRarity)}
                               </span>
                               {isSpecialFilter(activeFilterKind) &&
-                              row.specialCategory === activeFilterKind ? (
+                              matchesSpecialFilter(row, activeFilterKind) ? (
                                 <span className="reprint-badge">
                                   {activeFilterLabel}
                                 </span>

@@ -67,12 +67,14 @@ export type VariantKind =
   | "signature"
   | "other";
 
-export type SpecialCategory =
+export type ReprintCategory =
   | "ogn-reprint"
   | "sfd-reprint"
-  | "unl-reprint"
-  | "nashor"
-  | "crystal-rose";
+  | "unl-reprint";
+
+export type SpecialEdition = "nashor" | "crystal-rose";
+
+export type SpecialCategory = ReprintCategory | SpecialEdition;
 
 export type PriceSeries = {
   low: number | null;
@@ -107,7 +109,8 @@ export type CatalogRow = {
   cardmarketUrl: string;
   isExtra: boolean;
   isNumbered: boolean;
-  specialCategory: SpecialCategory | null;
+  originSet: SetCode | null;
+  specialEdition: SpecialEdition | null;
   sortOrder: number;
   variants: CatalogVariant[];
 };
@@ -170,7 +173,7 @@ type SpecialCardDefinition = {
   type?: string;
   rarity?: string;
   kind?: VariantKind;
-  category?: SpecialCategory;
+  edition?: SpecialEdition;
   includeWithoutProduct?: boolean;
   imageUrl?: string;
   artist?: string;
@@ -441,37 +444,37 @@ const SPECIAL_CARD_DEFINITIONS: Partial<
       number: "SP1",
       rarity: "Showcase",
       kind: "alternate",
-      category: "crystal-rose",
+      edition: "crystal-rose",
     },
     "sona harmonious": {
       number: "SP2",
       rarity: "Showcase",
       kind: "alternate",
-      category: "crystal-rose",
+      edition: "crystal-rose",
     },
     "ahri inquisitive": {
       number: "SP3",
       rarity: "Showcase",
       kind: "alternate",
-      category: "crystal-rose",
+      edition: "crystal-rose",
     },
     "sett brawler": {
       number: "SP4",
       rarity: "Showcase",
       kind: "alternate",
-      category: "crystal-rose",
+      edition: "crystal-rose",
     },
     "ezreal prodigy": {
       number: "SP5",
       rarity: "Showcase",
       kind: "alternate",
-      category: "crystal-rose",
+      edition: "crystal-rose",
     },
     "lux crownguard": {
       number: "SP6",
       rarity: "Showcase",
       kind: "alternate",
-      category: "crystal-rose",
+      edition: "crystal-rose",
     },
   },
 };
@@ -610,41 +613,62 @@ const REPRINT_SOURCES: Partial<Record<SetCode, SetCode[]>> = {
   VEN: ["OGN", "SFD", "UNL"],
 };
 
-const REPRINT_CATEGORY: Partial<Record<SetCode, SpecialCategory>> = {
-  OGN: "ogn-reprint",
-  SFD: "sfd-reprint",
-  UNL: "unl-reprint",
+const EXPLICIT_REPRINT_ORIGINS: Partial<
+  Record<SetCode, Record<string, SetCode>>
+> = {
+  UNL: {
+    "220": "OGN",
+    "221": "SFD",
+    "222": "SFD",
+    "223": "SFD",
+    "224": "OGN",
+    "225": "OGN",
+  },
+  VEN: {
+    "167": "OGN",
+    "168": "OGN",
+    "172": "OGN",
+    "174": "SFD",
+    "175": "SFD",
+    "176": "OGN",
+    "179": "UNL",
+    "180": "UNL",
+    "183": "UNL",
+    "184": "OGN",
+  },
 };
 
-function specialCategoryForRow(args: {
+function originSetForPremiumRow(args: {
   set: SetDefinition;
   key: string;
-  definition: SpecialCardDefinition | undefined;
-  variants: CatalogVariant[];
+  number: string;
+  hasCurrentBase: boolean;
   baseNamesBySet: Partial<Record<SetCode, Set<string>>>;
 }) {
-  const { set, key, definition, variants, baseNamesBySet } = args;
-  if (definition?.category) return definition.category;
-  if (
-    set.code === "UNL" &&
-    variants.some((variant) => variant.number.replace(/\*$/, "") === "238")
-  ) {
-    return "nashor";
-  }
+  const { set, key, number, hasCurrentBase, baseNamesBySet } = args;
+  if (hasCurrentBase) return null;
 
-  const hasPremiumPrint = variants.some(
-    (variant) =>
-      variant.kind === "overnumbered" || variant.kind === "signature",
-  );
-  const hasBasePrint = variants.some((variant) => variant.kind === "base");
-  if (!hasPremiumPrint || hasBasePrint) return null;
+  const explicit = EXPLICIT_REPRINT_ORIGINS[set.code]?.[number];
+  if (explicit) return explicit;
 
   for (const source of REPRINT_SOURCES[set.code] ?? []) {
     if (baseNamesBySet[source]?.has(key)) {
-      return REPRINT_CATEGORY[source] ?? null;
+      return source;
     }
   }
 
+  return null;
+}
+
+function specialEditionForRow(
+  set: SetDefinition,
+  number: string,
+  definition: SpecialCardDefinition | undefined,
+) {
+  if (definition?.edition) return definition.edition;
+  if (set.code === "UNL" && number.replace(/\*$/, "") === "238") {
+    return "nashor";
+  }
   return null;
 }
 
@@ -659,11 +683,15 @@ function collectorCode(card: RawCard, set: SetDefinition) {
 function inferKind(card: RawCard, set: SetDefinition): VariantKind {
   if (card.metadata.signature) return "signature";
   if (card.metadata.overnumbered) return "overnumbered";
-  if (card.metadata.alternate_art || /alternate art/i.test(card.name)) {
+  const code = collectorCode(card, set);
+  if (
+    card.metadata.alternate_art ||
+    /alternate art/i.test(card.name) ||
+    /^\d+[A-Z]$/i.test(code)
+  ) {
     return "alternate";
   }
 
-  const code = collectorCode(card, set);
   if (/^\d+$/.test(code) && Number(code) > set.baseSize) {
     return "overnumbered";
   }
@@ -698,7 +726,10 @@ function cardmarketSlug(name: string) {
 
 function displayName(name: string) {
   return name
-    .replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*/gi, "")
+    .replace(
+      /\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*/gi,
+      "",
+    )
     .trim();
 }
 
@@ -858,6 +889,12 @@ export function buildCatalog(args: {
       (isOriginsNumberedToken(fallbackCard, set)
         ? "Token"
         : fallbackCard?.classification.type ?? syntheticCardType(key));
+    const overnumberedCode = drafts
+      .find((draft) => draft.kind === "overnumbered" && draft.card)
+      ?.card;
+    const inferredSignatureNumber = overnumberedCode
+      ? `${collectorCode(overnumberedCode, set).replace(/\*$/, "")}*`
+      : undefined;
     const variants: CatalogVariant[] = drafts.map((draft, index) => {
       const product = productsForVariants[index] ?? null;
       const price = product ? priceByProduct.get(product.idProduct) : undefined;
@@ -889,7 +926,11 @@ export function buildCatalog(args: {
             : displayName(rawVariantName)),
         number:
           definedVariantNumber(definition, key, draft.kind) ??
-          (draft.card ? collectorCode(draft.card, set) : "—"),
+          (draft.card
+            ? collectorCode(draft.card, set)
+            : draft.kind === "signature"
+              ? inferredSignatureNumber ?? "—"
+              : "—"),
         kind: draft.kind,
         rarity:
           draft.kind === "alternate" ||
@@ -913,14 +954,9 @@ export function buildCatalog(args: {
       };
     });
 
-    const baseVariant = variants.find((variant) => variant.kind === "base");
     const fallbackCode =
       definition?.number ??
       (fallbackCard ? collectorCode(fallbackCard, set) : "");
-    const isExtra =
-      rowType === "Rune" ||
-      rowType === "Token" ||
-      /^[RT]\d/i.test(fallbackCode);
 
     const shouldSplitBasePrints =
       drafts.length > 1 &&
@@ -953,7 +989,8 @@ export function buildCatalog(args: {
             splitType === "Token" ||
             /^[RT]\d/i.test(code),
           isNumbered: isNumberedCode(code, set),
-          specialCategory: null,
+          originSet: null,
+          specialEdition: null,
           sortOrder: collectorSortOrder(code, card.collector_number),
           variants: [variant],
         });
@@ -961,39 +998,128 @@ export function buildCatalog(args: {
       continue;
     }
 
-    const number = fallbackCode || "—";
-    const collectorNumber = fallbackCard?.collector_number ?? 9999;
-    const specialCategory = specialCategoryForRow({
-      set,
-      key,
-      definition,
-      variants,
-      baseNamesBySet,
-    });
+    const entries = variants.map((variant, index) => ({
+      variant,
+      draft: drafts[index],
+    }));
+    const regularEntries = entries.filter(
+      ({ variant }) =>
+        variant.kind !== "overnumbered" && variant.kind !== "signature",
+    );
+    const premiumEntries = entries.filter(
+      ({ variant }) =>
+        variant.kind === "overnumbered" || variant.kind === "signature",
+    );
+    const premiumGroups = new Map<string, typeof premiumEntries>();
+    const fallbackPremiumNumber = premiumEntries
+      .find(({ variant }) => variant.kind === "overnumbered")
+      ?.variant.number.replace(/\*$/, "");
 
-    rows.push({
-      id: `${set.code}-${key.replace(/\s+/g, "-")}`,
-      number,
-      collectorNumber,
-      name: rowName,
-      type: rowType,
-      rarity:
-        definition?.rarity ??
-        fallbackCard?.classification.rarity ??
-        (isExtra ? "Special" : "—"),
-      domains: fallbackCard?.classification.domain ?? [],
-      imageUrl: baseVariant?.imageUrl ?? variants[0]?.imageUrl ?? null,
-      artist: baseVariant?.artist ?? fallbackCard?.media.artist ?? null,
-      cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(rowName)}/Versions`,
-      isExtra,
-      isNumbered: variants.some(
-        (variant) =>
-          variant.kind === "base" && isNumberedCode(variant.number, set),
-      ),
-      specialCategory,
-      sortOrder: collectorSortOrder(number, collectorNumber),
-      variants,
-    });
+    for (const entry of premiumEntries) {
+      const rawNumber = entry.variant.number.replace(/\*$/, "");
+      const premiumNumber =
+        rawNumber && rawNumber !== "—"
+          ? rawNumber
+          : fallbackPremiumNumber ?? "—";
+      const current = premiumGroups.get(premiumNumber) ?? [];
+      current.push(entry);
+      premiumGroups.set(premiumNumber, current);
+    }
+
+    const hasCurrentBase = regularEntries.some(
+      ({ variant }) => variant.kind === "base",
+    );
+    const rowSlug = key.replace(/\s+/g, "-");
+
+    function pushCatalogRow(
+      lineEntries: typeof entries,
+      line: "regular" | "premium",
+      premiumNumber?: string,
+    ) {
+      if (lineEntries.length === 0) return;
+
+      const representative =
+        lineEntries.find(({ variant }) =>
+          line === "premium"
+            ? variant.kind === "overnumbered"
+            : variant.kind === "base",
+        ) ?? lineEntries[0];
+      const representativeCard = representative.draft.card;
+      const lineVariants = lineEntries.map(({ variant }) => variant);
+      const number =
+        line === "premium"
+          ? premiumNumber ?? representative.variant.number.replace(/\*$/, "")
+          : definition?.number ??
+            lineVariants.find((variant) => variant.kind === "base")?.number ??
+            representative.variant.number ??
+            fallbackCode ??
+            "—";
+      const collectorNumber =
+        representativeCard?.collector_number ??
+        (number !== "—" && /^\d+$/.test(number) ? Number(number) : 9999);
+      const lineName = representative.variant.name || rowName;
+      const lineType =
+        definition?.type ??
+        (isOriginsNumberedToken(representativeCard, set)
+          ? "Token"
+          : representativeCard?.classification.type ?? rowType);
+      const lineIsExtra =
+        lineType === "Rune" ||
+        lineType === "Token" ||
+        /^[RT]\d/i.test(number);
+      const originSet =
+        line === "premium"
+          ? originSetForPremiumRow({
+              set,
+              key,
+              number,
+              hasCurrentBase,
+              baseNamesBySet,
+            })
+          : null;
+
+      rows.push({
+        id:
+          line === "premium"
+            ? `${set.code}-${number}-${rowSlug}`
+            : `${set.code}-${rowSlug}`,
+        number,
+        collectorNumber,
+        name: lineName,
+        type: lineType,
+        rarity:
+          representative.variant.rarity ??
+          definition?.rarity ??
+          representativeCard?.classification.rarity ??
+          (lineIsExtra ? "Special" : "—"),
+        domains:
+          representativeCard?.classification.domain ??
+          fallbackCard?.classification.domain ??
+          [],
+        imageUrl: representative.variant.imageUrl,
+        artist:
+          representative.variant.artist ??
+          representativeCard?.media.artist ??
+          null,
+        cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(lineName)}/Versions`,
+        isExtra: lineIsExtra,
+        isNumbered:
+          line === "regular" &&
+          lineVariants.some(
+            (variant) =>
+              variant.kind === "base" && isNumberedCode(variant.number, set),
+          ),
+        originSet,
+        specialEdition: specialEditionForRow(set, number, definition),
+        sortOrder: collectorSortOrder(number, collectorNumber),
+        variants: lineVariants,
+      });
+    }
+
+    pushCatalogRow(regularEntries, "regular");
+    for (const [number, lineEntries] of premiumGroups) {
+      pushCatalogRow(lineEntries, "premium", number);
+    }
   }
 
   rows.sort((a, b) => {
