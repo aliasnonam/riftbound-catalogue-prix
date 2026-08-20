@@ -508,7 +508,7 @@ function VariantDetails({ row, mode }: { row: CatalogRow; mode: PriceMode }) {
         </a>
       </div>
       <div className="variant-grid">
-        {row.variants.map((variant) => (
+        {row.associatedVariants.map((variant) => (
           <article className="variant-card" key={variant.id}>
             <CardPreviewThumb
               className="variant-thumb"

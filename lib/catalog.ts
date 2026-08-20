@@ -113,6 +113,7 @@ export type CatalogRow = {
   specialEdition: SpecialEdition | null;
   sortOrder: number;
   variants: CatalogVariant[];
+  associatedVariants: CatalogVariant[];
 };
 
 export type CatalogPayload = {
@@ -993,6 +994,7 @@ export function buildCatalog(args: {
           specialEdition: null,
           sortOrder: collectorSortOrder(code, card.collector_number),
           variants: [variant],
+          associatedVariants: [variant],
         });
       });
       continue;
@@ -1113,6 +1115,7 @@ export function buildCatalog(args: {
         specialEdition: specialEditionForRow(set, number, definition),
         sortOrder: collectorSortOrder(number, collectorNumber),
         variants: lineVariants,
+        associatedVariants: line === "regular" ? variants : lineVariants,
       });
     }
 
