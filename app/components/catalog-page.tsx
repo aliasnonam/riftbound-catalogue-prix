@@ -15,9 +15,15 @@ import type {
   CatalogPayload,
   CatalogRow,
   CatalogVariant,
-  SpecialCategory,
   VariantKind,
 } from "@/lib/catalog";
+import {
+  FILTERS_BY_SET,
+  getDescriptiveBadges,
+  isSpecialFilter,
+  matchesSpecialFilter,
+  type FilterKind,
+} from "@/lib/catalog-presentation";
 import {
   compareByHighestActivePrice,
   getActivePrice,
@@ -31,14 +37,6 @@ import {
   type SetCode,
 } from "@/lib/sets";
 
-type FilterKind =
-  | "all"
-  | "numbered"
-  | "alternate"
-  | "overnumbered"
-  | "signature"
-  | "extras"
-  | SpecialCategory;
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
 type RefreshState = "idle" | "loading" | "success" | "error";
 
@@ -83,68 +81,6 @@ const RARITY_ORDER = [
   "Special",
   "—",
 ];
-
-type FilterDefinition = { id: FilterKind; label: string };
-
-const FILTERS_BY_SET: Record<SetCode, FilterDefinition[]> = {
-  OGN: [
-    { id: "all", label: "Toutes" },
-    { id: "numbered", label: "Set numéroté" },
-    { id: "alternate", label: "Alternatives" },
-    { id: "overnumbered", label: "Outnumbered" },
-    { id: "signature", label: "Signées" },
-    { id: "extras", label: "Runes & tokens" },
-  ],
-  SFD: [
-    { id: "all", label: "Toutes" },
-    { id: "numbered", label: "Set numéroté" },
-    { id: "alternate", label: "Alternatives" },
-    { id: "overnumbered", label: "Outnumbered" },
-    { id: "ogn-reprint", label: "OGN Reprint" },
-    { id: "signature", label: "Signées" },
-    { id: "extras", label: "Runes & tokens" },
-  ],
-  UNL: [
-    { id: "all", label: "Toutes" },
-    { id: "numbered", label: "Set numéroté" },
-    { id: "alternate", label: "Alternatives" },
-    { id: "overnumbered", label: "Outnumbered" },
-    { id: "signature", label: "Signées" },
-    { id: "ogn-reprint", label: "OGN Reprint" },
-    { id: "sfd-reprint", label: "SFD Reprint" },
-    { id: "nashor", label: "Nashor" },
-    { id: "extras", label: "Runes & tokens" },
-  ],
-  VEN: [
-    { id: "all", label: "Toutes" },
-    { id: "numbered", label: "Set numéroté" },
-    { id: "alternate", label: "Alternatives" },
-    { id: "overnumbered", label: "Outnumbered" },
-    { id: "signature", label: "Signées" },
-    { id: "ogn-reprint", label: "OGN Reprint" },
-    { id: "sfd-reprint", label: "SFD Reprint" },
-    { id: "unl-reprint", label: "UNL Reprint" },
-    { id: "crystal-rose", label: "Crystal Rose" },
-    { id: "extras", label: "Runes & tokens" },
-  ],
-};
-
-function isSpecialFilter(filter: FilterKind): filter is SpecialCategory {
-  return (
-    filter === "ogn-reprint" ||
-    filter === "sfd-reprint" ||
-    filter === "unl-reprint" ||
-    filter === "nashor" ||
-    filter === "crystal-rose"
-  );
-}
-
-function matchesSpecialFilter(row: CatalogRow, filter: SpecialCategory) {
-  if (filter === "ogn-reprint") return row.originSet === "OGN";
-  if (filter === "sfd-reprint") return row.originSet === "SFD";
-  if (filter === "unl-reprint") return row.originSet === "UNL";
-  return row.specialEdition === filter;
-}
 
 function formatPrice(value: number | null) {
   return value === null ? "—" : EURO.format(value);
@@ -756,9 +692,6 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const visibleRows = filteredRows.slice(0, visibleCount);
   const remainingCount = Math.max(0, filteredRows.length - visibleRows.length);
   const nextBatchCount = Math.min(PAGE_SIZE, remainingCount);
-  const activeFilterLabel =
-    availableFilters.find((filter) => filter.id === activeFilterKind)?.label ??
-    "Toutes";
   const style = {
     "--set-accent": set.accent,
     "--set-accent-soft": set.accentSoft,
@@ -1046,12 +979,11 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                               >
                                 {rarityLabel(displayRarity)}
                               </span>
-                              {isSpecialFilter(activeFilterKind) &&
-                              matchesSpecialFilter(row, activeFilterKind) ? (
-                                <span className="reprint-badge">
-                                  {activeFilterLabel}
+                              {getDescriptiveBadges(row).map((badge) => (
+                                <span className="property-badge" key={badge.id}>
+                                  {badge.label}
                                 </span>
-                              ) : null}
+                              ))}
                             </div>
                             <h3>{row.name}</h3>
                             <p>

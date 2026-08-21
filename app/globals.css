@@ -559,7 +559,7 @@ a { color: inherit; text-decoration: none; }
   to { opacity: 1; }
 }
 .card-copy { min-width: 0; }
-.card-kicker { display: flex; align-items: center; gap: 8px; }
+.card-kicker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .collector-number { color: var(--set-accent); font-family: ui-monospace, monospace; font-size: 10px; font-weight: 750; letter-spacing: .08em; }
 .rarity { display: inline-flex; align-items: center; gap: 5px; color: #9ba1ac; font-size: 8px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .rarity::before { width: 5px; height: 5px; border-radius: 50%; background: #7f8793; content: ""; }
@@ -567,7 +567,7 @@ a { color: inherit; text-decoration: none; }
 .rarity-rare::before { border-radius: 1px; background: #9d7de0; transform: rotate(45deg); }
 .rarity-epic::before { background: #e08751; }
 .rarity-showcase::before, .rarity-ultimate::before { background: #e7b85c; box-shadow: 0 0 8px rgba(231,184,92,.5); }
-.reprint-badge {
+.property-badge {
   display: inline-flex;
   align-items: center;
   padding: 3px 6px;
