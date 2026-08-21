@@ -31,7 +31,8 @@ export const SETS: SetDefinition[] = [
     slug: "spiritforged",
     number: 2,
     name: "Spiritforged",
-    subtitle: "Esprits, forges et nouvelles pièces de collection.",
+    subtitle:
+      "La collection s’étend avec 12 nouvelles légendes, de nouveaux objets, des réimpressions d’Origins ainsi que des runes et tokens hors set numéroté.",
     release: "13 février 2026",
     baseSize: 221,
     expansionId: 6399,
@@ -43,7 +44,8 @@ export const SETS: SetDefinition[] = [
     slug: "unleashed",
     number: 3,
     name: "Unleashed",
-    subtitle: "Le troisième set, avec ses cartes Ultimate et ses variantes.",
+    subtitle:
+      "Le troisième set introduit 12 nouvelles légendes, des réimpressions d’anciens sets et la rareté Ultime avec Baron Nashor.",
     release: "8 mai 2026",
     baseSize: 219,
     expansionId: 6491,
@@ -55,7 +57,8 @@ export const SETS: SetDefinition[] = [
     slug: "vendetta",
     number: 4,
     name: "Vendetta",
-    subtitle: "Rivalités, nouvelles alternatives et cartes de chasse.",
+    subtitle:
+      "Le quatrième set ajoute 9 nouvelles légendes, des réimpressions des trois sets précédents, 22 Rival Overnumbered en 11 diptyques et les Crystal Rose.",
     release: "31 juillet 2026",
     baseSize: 166,
     expansionId: 6587,
