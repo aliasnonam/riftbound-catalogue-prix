@@ -666,6 +666,146 @@ function HeroCardDialog({
   );
 }
 
+function OriginsSignedGalleryDialog({
+  initialIndex,
+  onClose,
+}: {
+  initialIndex: number;
+  onClose: () => void;
+}) {
+  const [index, setIndex] = useState(initialIndex);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const touchStartXRef = useRef<number | null>(null);
+  const card = ORIGINS_SIGNED_HERO_CARDS[index];
+
+  const showPrevious = useCallback(() => {
+    setIndex((current) =>
+      current === 0 ? ORIGINS_SIGNED_HERO_CARDS.length - 1 : current - 1,
+    );
+  }, []);
+
+  const showNext = useCallback(() => {
+    setIndex((current) =>
+      (current + 1) % ORIGINS_SIGNED_HERO_CARDS.length,
+    );
+  }, []);
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => {
+      closeRef.current?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      else if (event.key === "ArrowLeft") showPrevious();
+      else if (event.key === "ArrowRight") showNext();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [onClose, showNext, showPrevious]);
+
+  return createPortal(
+    <div
+      className="origins-gallery-backdrop"
+      role="presentation"
+      onPointerDown={onClose}
+    >
+      <section
+        className="origins-gallery-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Galerie des 12 cartes signées Outnumbered d’Origins"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <header className="origins-gallery-header">
+          <div>
+            <span>Origins · Signées Outnumbered</span>
+            <strong>
+              {index + 1} / {ORIGINS_SIGNED_HERO_CARDS.length}
+            </strong>
+          </div>
+          <button
+            ref={closeRef}
+            className="origins-gallery-close"
+            type="button"
+            aria-label="Fermer la galerie"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </header>
+
+        <div
+          className="origins-gallery-stage"
+          onTouchStart={(event) => {
+            touchStartXRef.current = event.touches[0]?.clientX ?? null;
+          }}
+          onTouchEnd={(event) => {
+            const startX = touchStartXRef.current;
+            const endX = event.changedTouches[0]?.clientX;
+            touchStartXRef.current = null;
+            if (startX === null || endX === undefined) return;
+            const distance = endX - startX;
+            if (Math.abs(distance) < 44) return;
+            if (distance > 0) showPrevious();
+            else showNext();
+          }}
+        >
+          <button
+            className="origins-gallery-arrow origins-gallery-arrow--previous"
+            type="button"
+            aria-label="Carte précédente"
+            onClick={showPrevious}
+          >
+            ‹
+          </button>
+          <div className="origins-gallery-artwork" key={card.number}>
+            <HeroCardArtwork card={card} />
+          </div>
+          <button
+            className="origins-gallery-arrow origins-gallery-arrow--next"
+            type="button"
+            aria-label="Carte suivante"
+            onClick={showNext}
+          >
+            ›
+          </button>
+        </div>
+
+        <footer className="origins-gallery-footer">
+          <p>
+            <strong>{card.number}</strong>
+            <span>{card.name}</span>
+          </p>
+          <div
+            className="origins-gallery-progress"
+            aria-label={`Carte ${index + 1} sur ${ORIGINS_SIGNED_HERO_CARDS.length}`}
+          >
+            {ORIGINS_SIGNED_HERO_CARDS.map((galleryCard, cardIndex) => (
+              <button
+                className={cardIndex === index ? "is-active" : ""}
+                type="button"
+                aria-label={`Afficher ${galleryCard.number} ${galleryCard.name}`}
+                aria-current={cardIndex === index ? "true" : undefined}
+                onClick={() => setIndex(cardIndex)}
+                key={galleryCard.number}
+              />
+            ))}
+          </div>
+          <small>Flèches sur ordinateur · balayage horizontal sur mobile</small>
+        </footer>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function RivalsGalleryDialog({
   catalogCards,
   onClose,
@@ -1000,6 +1140,9 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [cooldownClock, setCooldownClock] = useState(() => Date.now());
   const [setNavHints, setSetNavHints] = useState({ left: false, right: false });
   const [heroPreview, setHeroPreview] = useState<HeroPreviewCard | null>(null);
+  const [originsGalleryIndex, setOriginsGalleryIndex] = useState<number | null>(
+    null,
+  );
   const [rivalsGalleryOpen, setRivalsGalleryOpen] = useState(false);
   const refreshResetTimerRef = useRef<number | null>(null);
   const filterTabsRef = useRef<HTMLDivElement | null>(null);
@@ -1144,6 +1287,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
 
     tabs.scrollLeft = 0;
     setHeroPreview(null);
+    setOriginsGalleryIndex(null);
     setRivalsGalleryOpen(false);
   }, [setCode]);
 
@@ -1432,13 +1576,13 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               aria-label="Planche de collection des 12 cartes signées Outnumbered d’Origins, de 299 à 310"
             >
               <div className="origins-binder-grid">
-                {ORIGINS_SIGNED_HERO_CARDS.map((card) => (
+                {ORIGINS_SIGNED_HERO_CARDS.map((card, cardIndex) => (
                   <button
                     className="origins-binder-slot"
                     type="button"
                     aria-label={`Ouvrir la fiche de ${card.name}, ${card.number}`}
                     aria-haspopup="dialog"
-                    onClick={() => setHeroPreview(card)}
+                    onClick={() => setOriginsGalleryIndex(cardIndex)}
                     key={card.number}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1831,6 +1975,12 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
         <HeroCardDialog
           card={heroPreview}
           onClose={() => setHeroPreview(null)}
+        />
+      ) : null}
+      {originsGalleryIndex !== null ? (
+        <OriginsSignedGalleryDialog
+          initialIndex={originsGalleryIndex}
+          onClose={() => setOriginsGalleryIndex(null)}
         />
       ) : null}
       {rivalsGalleryOpen ? (
