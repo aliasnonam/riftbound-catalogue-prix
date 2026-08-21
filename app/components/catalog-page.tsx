@@ -15,10 +15,15 @@ import type {
   CatalogPayload,
   CatalogRow,
   CatalogVariant,
-  PriceSeries,
   SpecialCategory,
   VariantKind,
 } from "@/lib/catalog";
+import {
+  compareByHighestActivePrice,
+  getActivePrice,
+  getPrimaryVariantPrice,
+  type PriceMode,
+} from "@/lib/pricing";
 import {
   getSetHref,
   SET_BY_CODE,
@@ -26,7 +31,6 @@ import {
   type SetCode,
 } from "@/lib/sets";
 
-type PriceMode = "low" | "trend" | "avg30";
 type FilterKind =
   | "all"
   | "numbered"
@@ -135,11 +139,6 @@ function matchesSpecialFilter(row: CatalogRow, filter: SpecialCategory) {
   return row.specialEdition === filter;
 }
 
-function metricValue(series: PriceSeries, mode: PriceMode) {
-  const value = series[mode];
-  return value !== null && value > 0 ? value : null;
-}
-
 function formatPrice(value: number | null) {
   return value === null ? "—" : EURO.format(value);
 }
@@ -190,7 +189,7 @@ function variantForDisplay(
   );
 }
 
-function maxPrice(
+function filteredMaxPrice(
   row: CatalogRow,
   mode: PriceMode,
   filter: FilterKind,
@@ -200,18 +199,13 @@ function maxPrice(
     (variant) => rarity === "all" || variant.rarity === rarity,
   );
   const values = relevantVariants.flatMap((variant) => [
-    metricValue(variant.standard, mode),
-    metricValue(variant.foil, mode),
+    getActivePrice(variant.standard, mode),
+    getActivePrice(variant.foil, mode),
   ]);
-  return Math.max(0, ...values.filter((value): value is number => value !== null));
-}
-
-function associatedMaxPrice(row: CatalogRow, mode: PriceMode) {
-  const values = row.associatedVariants.flatMap((variant) => [
-    metricValue(variant.standard, mode),
-    metricValue(variant.foil, mode),
-  ]);
-  return Math.max(0, ...values.filter((value): value is number => value !== null));
+  const availableValues = values.filter(
+    (value): value is number => value !== null,
+  );
+  return availableValues.length ? Math.max(...availableValues) : null;
 }
 
 function rarityLabel(rarity: string) {
@@ -473,9 +467,9 @@ function PriceCell({
   let secondary: number | null = null;
 
   if (column === "normal") {
-    primary = base ? metricValue(base.standard, mode) : null;
+    primary = base ? getActivePrice(base.standard, mode) : null;
   } else if (column === "foil") {
-    primary = base ? metricValue(base.foil, mode) : null;
+    primary = base ? getActivePrice(base.foil, mode) : null;
   } else {
     const kind =
       column === "alternate"
@@ -486,10 +480,9 @@ function PriceCell({
     variants = associatedVariantsOf(row, kind);
     const first = variants[0];
     if (first) {
-      primary =
-        metricValue(first.standard, mode) ?? metricValue(first.foil, mode);
+      primary = getPrimaryVariantPrice(first, mode);
       if (column === "alternate") {
-        secondary = metricValue(first.foil, mode);
+        secondary = getActivePrice(first.foil, mode);
         if (secondary === primary) secondary = null;
       }
     }
@@ -540,11 +533,11 @@ function VariantDetails({ row, mode }: { row: CatalogRow; mode: PriceMode }) {
               <div className="variant-prices">
                 <span>
                   Normal
-                  <b>{formatPrice(metricValue(variant.standard, mode))}</b>
+                  <b>{formatPrice(getActivePrice(variant.standard, mode))}</b>
                 </span>
                 <span>
                   Foil
-                  <b>{formatPrice(metricValue(variant.foil, mode))}</b>
+                  <b>{formatPrice(getActivePrice(variant.foil, mode))}</b>
                 </span>
               </div>
             </div>
@@ -655,8 +648,8 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     ].sort((a, b) => RARITY_ORDER.indexOf(a) - RARITY_ORDER.indexOf(b));
   }, [payload]);
 
-  const filteredRows = useMemo(() => {
-    if (!payload) return [];
+  const filteredRows = (() => {
+    if (!payload) return [] as CatalogRow[];
     const normalizedQuery = query.trim().toLocaleLowerCase("fr");
     const rows = payload.rows.filter((row) => {
       const relevantVariants = variantsForFilter(row, activeFilterKind);
@@ -683,18 +676,24 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     return rows.sort((a, b) => {
       if (sortMode === "name") return a.name.localeCompare(b.name, "fr");
       if (sortMode === "price-desc") {
-        const difference =
-          associatedMaxPrice(b, priceMode) - associatedMaxPrice(a, priceMode);
-        if (difference !== 0) return difference;
-        return a.sortOrder - b.sortOrder;
+        return compareByHighestActivePrice(a, b, priceMode);
       }
       if (sortMode === "price-asc") {
-        const aValue =
-          maxPrice(a, priceMode, activeFilterKind, rarity) ||
-          Number.POSITIVE_INFINITY;
-        const bValue =
-          maxPrice(b, priceMode, activeFilterKind, rarity) ||
-          Number.POSITIVE_INFINITY;
+        const aValue = filteredMaxPrice(
+          a,
+          priceMode,
+          activeFilterKind,
+          rarity,
+        );
+        const bValue = filteredMaxPrice(
+          b,
+          priceMode,
+          activeFilterKind,
+          rarity,
+        );
+        if (aValue === null && bValue === null) return a.sortOrder - b.sortOrder;
+        if (aValue === null) return 1;
+        if (bValue === null) return -1;
         return aValue - bValue;
       }
       if (a.sortOrder !== b.sortOrder) {
@@ -702,7 +701,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       }
       return a.name.localeCompare(b.name, "fr");
     });
-  }, [payload, query, rarity, activeFilterKind, sortMode, priceMode]);
+  })();
 
   const visibleRows = filteredRows.slice(0, visibleCount);
   const remainingCount = Math.max(0, filteredRows.length - visibleRows.length);
@@ -946,7 +945,10 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 <span>Signée</span>
                 <span />
               </div>
-              <div className="catalog-rows">
+              <div
+                className="catalog-rows"
+                key={`${setCode}-${activeFilterKind}-${rarity}-${sortMode}-${priceMode}`}
+              >
                 {visibleRows.map((row) => {
                   const isOpen = expanded.has(row.id);
                   const displayVariant = variantForDisplay(
