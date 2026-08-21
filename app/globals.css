@@ -721,6 +721,14 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: .06em;
   text-transform: uppercase;
 }
+.property-badge--rival {
+  border-color: rgba(255, 104, 61, .58);
+  background: linear-gradient(135deg, rgba(183, 48, 22, .34), rgba(255, 104, 61, .13));
+  color: #ff865f;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 153, 105, .08),
+    0 0 11px rgba(255, 76, 36, .14);
+}
 .card-copy h3 {
   overflow: hidden;
   margin: 7px 0 4px;

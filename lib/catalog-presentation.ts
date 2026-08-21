@@ -15,6 +15,11 @@ export type FilterKind =
 
 export type FilterDefinition = { id: FilterKind; label: string };
 
+export const VENDETTA_RIVAL_NUMBERS = new Set([
+  167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177,
+  178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188,
+]);
+
 export const FILTERS_BY_SET: Record<SetCode, FilterDefinition[]> = {
   OGN: [
     { id: "all", label: "Toutes" },
@@ -81,7 +86,9 @@ export function matchesSpecialFilter(
 }
 
 export function getDescriptiveBadges(
-  row: Pick<CatalogRow, "originSet" | "specialEdition">,
+  row: Pick<CatalogRow, "originSet" | "specialEdition"> &
+    Partial<Pick<CatalogRow, "collectorNumber">>,
+  setCode?: SetCode,
 ) {
   const badges: Array<{ id: string; label: string }> = [];
 
@@ -96,6 +103,14 @@ export function getDescriptiveBadges(
     badges.push({ id: "nashor", label: "Nashor" });
   } else if (row.specialEdition === "crystal-rose") {
     badges.push({ id: "crystal-rose", label: "Crystal Rose" });
+  }
+
+  if (
+    setCode === "VEN" &&
+    typeof row.collectorNumber === "number" &&
+    VENDETTA_RIVAL_NUMBERS.has(row.collectorNumber)
+  ) {
+    badges.push({ id: "rival", label: "Rival" });
   }
 
   return badges;

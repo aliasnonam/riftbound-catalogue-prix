@@ -1149,8 +1149,11 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                               >
                                 {rarityLabel(displayRarity)}
                               </span>
-                              {getDescriptiveBadges(row).map((badge) => (
-                                <span className="property-badge" key={badge.id}>
+                              {getDescriptiveBadges(row, setCode).map((badge) => (
+                                <span
+                                  className={`property-badge property-badge--${badge.id}`}
+                                  key={badge.id}
+                                >
                                   {badge.label}
                                 </span>
                               ))}
