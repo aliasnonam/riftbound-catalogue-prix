@@ -56,6 +56,19 @@ type CatalogCooldownResponse = {
 
 const PAGE_SIZE = 50;
 
+const VENDETTA_RIVAL_CARDS = {
+  vi: {
+    name: "Vi, Destructive",
+    imageUrl:
+      "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/dff596efc7413bfdd9cc8e667c46bd4228447de5-744x1039.png?accountingTag=RB",
+  },
+  jinx: {
+    name: "Jinx, Demolitionist",
+    imageUrl:
+      "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3a7304f3c9897967812940838e978e54e251e545-744x1039.png?accountingTag=RB",
+  },
+} as const;
+
 const EURO = new Intl.NumberFormat("fr-FR", {
   style: "currency",
   currency: "EUR",
@@ -851,7 +864,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       </header>
 
       <main>
-        <section className="set-hero">
+        <section className={`set-hero${setCode === "VEN" ? " set-hero--rivals" : ""}`}>
           <div className="hero-grid" aria-hidden="true" />
           <div className="hero-copy">
             <p className="eyebrow">
@@ -864,9 +877,33 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               <span>{set.baseSize} cartes dans le set numéroté</span>
             </div>
           </div>
-          <div className="hero-sigil" aria-hidden="true">
-            <span>{set.code}</span>
-          </div>
+          {setCode === "VEN" ? (
+            <figure
+              className="rival-hero-cards"
+              aria-label="Diptyque Rival Overnumbered : Vi face à Jinx"
+            >
+              <span className="rival-hero-card rival-hero-card--vi">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={VENDETTA_RIVAL_CARDS.vi.imageUrl}
+                  alt={`Carte ${VENDETTA_RIVAL_CARDS.vi.name}`}
+                  decoding="async"
+                />
+              </span>
+              <span className="rival-hero-card rival-hero-card--jinx">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={VENDETTA_RIVAL_CARDS.jinx.imageUrl}
+                  alt={`Carte ${VENDETTA_RIVAL_CARDS.jinx.name}`}
+                  decoding="async"
+                />
+              </span>
+            </figure>
+          ) : (
+            <div className="hero-sigil" aria-hidden="true">
+              <span>{set.code}</span>
+            </div>
+          )}
         </section>
 
         <section className="catalog-wrap" aria-labelledby="catalog-title">

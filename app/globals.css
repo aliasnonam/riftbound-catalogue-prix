@@ -238,6 +238,71 @@ a { color: inherit; text-decoration: none; }
   transform: rotate(-8deg) translateX(.09em);
 }
 
+.set-hero--rivals {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 32vw);
+  column-gap: clamp(24px, 3vw, 58px);
+}
+.set-hero--rivals .hero-copy { max-width: 760px; }
+.rival-hero-cards {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 510px);
+  height: clamp(310px, 28vw, 390px);
+  margin: 0;
+  justify-self: end;
+  pointer-events: none;
+  isolation: isolate;
+}
+.rival-hero-cards::before {
+  position: absolute;
+  z-index: -1;
+  inset: 8% -8% 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 50%, rgba(239, 71, 111, .22), transparent 45%),
+    radial-gradient(circle at 72% 42%, rgba(72, 156, 255, .2), transparent 46%);
+  content: "";
+  filter: blur(22px);
+}
+.rival-hero-card {
+  position: absolute;
+  top: 50%;
+  display: block;
+  width: clamp(158px, 13vw, 205px);
+  aspect-ratio: 744 / 1039;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--set-accent) 48%, rgba(255,255,255,.2));
+  border-radius: clamp(9px, .8vw, 13px);
+  background: #10131d;
+  box-shadow:
+    0 28px 55px rgba(0, 0, 0, .58),
+    0 0 28px color-mix(in srgb, var(--set-accent) 15%, transparent);
+  transform-origin: 50% 72%;
+}
+.rival-hero-card::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09);
+  content: "";
+}
+.rival-hero-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rival-hero-card--vi {
+  left: 4%;
+  z-index: 1;
+  transform: translateY(-47%) rotate(-6deg);
+}
+.rival-hero-card--jinx {
+  right: 4%;
+  z-index: 2;
+  transform: translateY(-53%) rotate(6deg);
+}
+
 .catalog-wrap { width: min(1380px, calc(100% - 7vw)); margin: 0 auto; padding: 74px 0 90px; }
 .catalog-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 48px; }
 .catalog-intro h2 {
@@ -848,6 +913,19 @@ a { color: inherit; text-decoration: none; }
   .set-nav-scroll-hint.is-visible { opacity: 1; }
   .set-hero { min-height: 370px; }
   .hero-sigil { width: 220px; margin-right: -70px; opacity: .55; }
+  .set-hero--rivals { display: block; }
+  .set-hero--rivals .hero-copy { max-width: 680px; }
+  .rival-hero-cards {
+    position: absolute;
+    right: -42px;
+    bottom: 16px;
+    width: 340px;
+    height: 300px;
+    opacity: .46;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.62) 30%, #000 58%);
+    mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.62) 30%, #000 58%);
+  }
+  .rival-hero-card { width: 150px; }
   .catalog-intro { align-items: flex-start; flex-direction: column; gap: 25px; }
   .update-card { width: 100%; min-width: 0; }
   .stat-strip { grid-template-columns: repeat(5, minmax(170px, 1fr)); overflow-x: auto; }
@@ -878,6 +956,22 @@ a { color: inherit; text-decoration: none; }
   .hero-subtitle { max-width: 100%; margin-top: 20px; font-size: 15px; line-height: 1.55; text-wrap: pretty; }
   .hero-meta { align-items: flex-start; flex-direction: column; gap: 8px; margin-top: 22px; }
   .hero-sigil { position: absolute; right: -95px; width: 210px; opacity: .32; }
+  .set-hero--rivals { min-height: 390px; }
+  .set-hero--rivals .hero-copy { z-index: 3; }
+  .rival-hero-cards {
+    right: -28px;
+    bottom: 16px;
+    width: 180px;
+    height: 170px;
+    opacity: .22;
+    filter: saturate(.85);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.48) 24%, #000 62%);
+    mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.48) 24%, #000 62%);
+  }
+  .rival-hero-cards::before { inset: 10% -12% 0; filter: blur(14px); }
+  .rival-hero-card { width: 88px; border-radius: 6px; }
+  .rival-hero-card--vi { left: 3%; transform: translateY(-46%) rotate(-7deg); }
+  .rival-hero-card--jinx { right: 3%; transform: translateY(-54%) rotate(7deg); }
   .catalog-wrap { width: calc(100% - 28px); padding: 55px 0 70px; }
   .catalog-intro h2 { font-size: 38px; }
   .update-card { grid-template-columns: auto 1fr; }
