@@ -6,8 +6,8 @@ import { getDb } from "@/db";
 import { marketPriceCache } from "@/db/schema";
 import {
   isStoredPriceGuideList,
-  mergeKnownPriceGuides,
   parsePriceExport,
+  preparePriceRefresh,
   type PriceExport,
 } from "@/lib/cardmarket-refresh";
 import type { MarketProduct, PriceGuide } from "@/lib/catalog";
@@ -130,44 +130,25 @@ export async function refreshMarketPrices() {
     storedCache?.sourceCreatedAt ?? bundledPrices.createdAt;
   const incoming = await fetchLatestPriceGuide();
 
-  const incomingTime = Date.parse(incoming.createdAt);
-  const currentTime = Date.parse(currentSourceCreatedAt);
-  if (incomingTime < currentTime) {
-    throw new Error("Le Price Guide reçu est plus ancien que les prix conservés.");
-  }
-
-  const merged = mergeKnownPriceGuides({
+  const prepared = preparePriceRefresh({
     products: bundledProducts.products,
     currentPrices,
-    incomingPrices: incoming.priceGuides,
+    currentSourceCreatedAt,
+    incoming,
   });
-  const hasNewSource = incomingTime > currentTime;
-  const hasChangedPrices = merged.changedProducts > 0;
-
-  if (storedCache && !hasNewSource && !hasChangedPrices) {
-    return {
-      bundle: bundleFromCache(storedCache),
-      refreshStatus: "unchanged" as const,
-      updatedProducts: 0,
-    };
-  }
 
   const cache: PriceCache = {
-    prices: merged.prices,
-    sourceVersion: incoming.version,
-    sourceCreatedAt: incoming.createdAt,
-    syncedAt:
-      hasNewSource || hasChangedPrices
-        ? new Date().toISOString()
-        : bundledPrices.createdAt,
-    matchedProducts: merged.matchedProducts,
+    prices: prepared.prices,
+    sourceVersion: prepared.sourceVersion,
+    sourceCreatedAt: prepared.sourceCreatedAt,
+    syncedAt: prepared.syncedAt,
+    matchedProducts: prepared.matchedProducts,
   };
   await writePriceCache(cache);
 
   return {
     bundle: bundleFromCache(cache),
-    refreshStatus:
-      hasNewSource || hasChangedPrices ? ("updated" as const) : ("unchanged" as const),
-    updatedProducts: merged.changedProducts,
+    refreshStatus: prepared.refreshStatus,
+    updatedProducts: prepared.updatedProducts,
   };
 }

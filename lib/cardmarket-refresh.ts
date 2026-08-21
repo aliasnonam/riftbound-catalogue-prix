@@ -6,6 +6,16 @@ export type PriceExport = {
   priceGuides: PriceGuide[];
 };
 
+export type PreparedPriceRefresh = {
+  prices: PriceGuide[];
+  sourceVersion: number;
+  sourceCreatedAt: string;
+  syncedAt: string;
+  matchedProducts: number;
+  refreshStatus: "updated" | "unchanged";
+  updatedProducts: number;
+};
+
 const PRICE_FIELDS = [
   "avg",
   "low",
@@ -141,4 +151,41 @@ export function mergeKnownPriceGuides(args: {
   }
 
   return { prices, matchedProducts, changedProducts };
+}
+
+export function preparePriceRefresh(args: {
+  products: MarketProduct[];
+  currentPrices: PriceGuide[];
+  currentSourceCreatedAt: string;
+  incoming: PriceExport;
+  now?: () => Date;
+}): PreparedPriceRefresh {
+  const incomingTime = Date.parse(args.incoming.createdAt);
+  const currentTime = Date.parse(args.currentSourceCreatedAt);
+  if (incomingTime < currentTime) {
+    throw new Error("Le Price Guide reçu est plus ancien que les prix conservés.");
+  }
+
+  const merged = mergeKnownPriceGuides({
+    products: args.products,
+    currentPrices: args.currentPrices,
+    incomingPrices: args.incoming.priceGuides,
+  });
+  const hasNewSource = incomingTime > currentTime;
+  const hasChangedPrices = merged.changedProducts > 0;
+
+  // The clock is read only after the export has been validated and merged.
+  // Persistence happens afterwards; a failed write never exposes this value.
+  const syncedAt = (args.now?.() ?? new Date()).toISOString();
+
+  return {
+    prices: merged.prices,
+    sourceVersion: args.incoming.version,
+    sourceCreatedAt: args.incoming.createdAt,
+    syncedAt,
+    matchedProducts: merged.matchedProducts,
+    refreshStatus:
+      hasNewSource || hasChangedPrices ? "updated" : "unchanged",
+    updatedProducts: merged.changedProducts,
+  };
 }

@@ -17,6 +17,7 @@ import type {
   CatalogVariant,
   VariantKind,
 } from "@/lib/catalog";
+import { formatCardmarketSyncDate } from "@/lib/cardmarket-date";
 import {
   FILTERS_BY_SET,
   getDescriptiveBadges,
@@ -53,12 +54,6 @@ const EURO = new Intl.NumberFormat("fr-FR", {
   currency: "EUR",
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
-});
-
-const DATE = new Intl.DateTimeFormat("fr-FR", {
-  dateStyle: "long",
-  timeStyle: "short",
-  timeZone: "Europe/Paris",
 });
 
 const RARITY_LABELS: Record<string, string> = {
@@ -773,7 +768,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                       ? "Guide Cardmarket à jour"
                       : "Dernier relevé disponible"}
                   </strong>
-                  <span>{DATE.format(new Date(payload.pricesUpdatedAt))}</span>
+                  <span>{formatCardmarketSyncDate(payload.pricesUpdatedAt)}</span>
                 </div>
                 <button
                   className={`refresh-button is-${refreshState}`}

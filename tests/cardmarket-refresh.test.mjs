@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   mergeKnownPriceGuides,
   parsePriceExport,
+  preparePriceRefresh,
 } from "../lib/cardmarket-refresh.ts";
 
 function product(idProduct) {
@@ -86,4 +87,53 @@ test("validates the Cardmarket export metadata", () => {
     () => parsePriceExport({ version: 1, createdAt: "invalid", priceGuides: [] }),
     /incomplet/,
   );
+});
+
+test("records the completion time after a successful unchanged refresh", () => {
+  const current = guide(1, { low: 3, trend: 4, avg30: 5 });
+  const completedAt = "2026-08-21T01:12:00.000Z";
+  let clockReads = 0;
+  const result = preparePriceRefresh({
+    products: [product(1)],
+    currentPrices: [current],
+    currentSourceCreatedAt: "2026-08-20T00:49:00.000Z",
+    incoming: {
+      version: 1,
+      createdAt: "2026-08-20T00:49:00.000Z",
+      priceGuides: [current],
+    },
+    now: () => {
+      clockReads += 1;
+      return new Date(completedAt);
+    },
+  });
+
+  assert.equal(result.refreshStatus, "unchanged");
+  assert.equal(result.updatedProducts, 0);
+  assert.equal(result.syncedAt, completedAt);
+  assert.equal(clockReads, 1);
+});
+
+test("does not read a new timestamp when processing fails", () => {
+  let clockReads = 0;
+
+  assert.throws(
+    () =>
+      preparePriceRefresh({
+        products: [product(1)],
+        currentPrices: [guide(1)],
+        currentSourceCreatedAt: "2026-08-21T00:00:00.000Z",
+        incoming: {
+          version: 1,
+          createdAt: "2026-08-20T00:00:00.000Z",
+          priceGuides: [guide(1)],
+        },
+        now: () => {
+          clockReads += 1;
+          return new Date();
+        },
+      }),
+    /plus ancien/,
+  );
+  assert.equal(clockReads, 0);
 });
