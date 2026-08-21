@@ -531,7 +531,9 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [refreshState, setRefreshState] = useState<RefreshState>("idle");
   const [cooldownClock, setCooldownClock] = useState(() => Date.now());
+  const [filterTabsHintVisible, setFilterTabsHintVisible] = useState(false);
   const refreshResetTimerRef = useRef<number | null>(null);
+  const filterTabsRef = useRef<HTMLDivElement | null>(null);
   const availableFilters = FILTERS_BY_SET[setCode];
   const activeFilterKind = availableFilters.some(
     (filter) => filter.id === filterKind,
@@ -663,6 +665,27 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
         window.clearTimeout(refreshResetTimerRef.current);
         refreshResetTimerRef.current = null;
       }
+    };
+  }, [setCode]);
+
+  useEffect(() => {
+    const tabs = filterTabsRef.current;
+    if (!tabs) return;
+
+    tabs.scrollLeft = 0;
+    const updateScrollHint = () => {
+      const remainingScroll = tabs.scrollWidth - tabs.clientWidth - tabs.scrollLeft;
+      setFilterTabsHintVisible(remainingScroll > 4);
+    };
+
+    updateScrollHint();
+    tabs.addEventListener("scroll", updateScrollHint, { passive: true });
+    const resizeObserver = new ResizeObserver(updateScrollHint);
+    resizeObserver.observe(tabs);
+
+    return () => {
+      tabs.removeEventListener("scroll", updateScrollHint);
+      resizeObserver.disconnect();
     };
   }, [setCode]);
 
@@ -947,20 +970,33 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 </select>
               </label>
             </div>
-            <div className="filter-tabs" role="group" aria-label="Type de carte">
-              {availableFilters.map((filter) => (
-                <button
-                  type="button"
-                  key={filter.id}
-                  className={activeFilterKind === filter.id ? "is-active" : ""}
-                  onClick={() => {
-                    setFilterKind(filter.id);
-                    setVisibleCount(PAGE_SIZE);
-                  }}
-                >
-                  {filter.label}
-                </button>
-              ))}
+            <div className="filter-tabs-wrap">
+              <div
+                className="filter-tabs"
+                ref={filterTabsRef}
+                role="group"
+                aria-label="Type de carte"
+              >
+                {availableFilters.map((filter) => (
+                  <button
+                    type="button"
+                    key={filter.id}
+                    className={activeFilterKind === filter.id ? "is-active" : ""}
+                    onClick={() => {
+                      setFilterKind(filter.id);
+                      setVisibleCount(PAGE_SIZE);
+                    }}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+              <span
+                className={`filter-tabs-scroll-hint${filterTabsHintVisible ? " is-visible" : ""}`}
+                aria-hidden="true"
+              >
+                ›
+              </span>
             </div>
           </div>
 
