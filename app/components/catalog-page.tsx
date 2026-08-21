@@ -478,7 +478,11 @@ function VariantDetails({ row, mode }: { row: CatalogRow; mode: PriceMode }) {
                 </span>
                 <span className="variant-number">{variant.number}</span>
               </div>
-              <strong>{variant.name}</strong>
+              <strong
+                className={`rarity-title-${variant.rarity.toLowerCase()}`}
+              >
+                {variant.name}
+              </strong>
               <div className="variant-prices">
                 <span>
                   Normal
@@ -754,7 +758,18 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       <header className="topbar">
         <Link className="brand" href="/" aria-label="Catalogue Riftbound">
           <span className="brand-mark" aria-hidden="true">
-            ◇
+            <svg viewBox="0 0 32 32" focusable="false">
+              <polygon points="16,3 27,9.5 16,16" opacity="0.58" />
+              <polygon points="27,9.5 27,22.5 16,16" opacity="0.9" />
+              <polygon points="27,22.5 16,29 16,16" opacity="0.68" />
+              <polygon points="16,29 5,22.5 16,16" opacity="1" />
+              <polygon points="5,22.5 5,9.5 16,16" opacity="0.72" />
+              <polygon points="5,9.5 16,3 16,16" opacity="0.86" />
+              <polygon
+                className="brand-hexagon-outline"
+                points="16,3 27,9.5 27,22.5 16,29 5,22.5 5,9.5"
+              />
+            </svg>
           </span>
           <span>
             <strong>RIFTBOUND</strong>
@@ -797,7 +812,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
         <section className="catalog-wrap" aria-labelledby="catalog-title">
           <div className="catalog-intro">
             <div>
-              <p className="eyebrow">Catalogue vivant</p>
+              <p className="eyebrow">Catalogue dynamique</p>
               <h2 id="catalog-title">Toutes les cartes, toutes les finitions</h2>
               <p>
                 Normal, foil, alternatives, outnumbered et signatures réunis
@@ -961,8 +976,6 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               <span className="preview-hint preview-hint-touch">
                 Touche une carte pour l’agrandir
               </span>
-              <span aria-hidden="true">·</span>
-              {modeLabel(priceMode)} · EUR
             </span>
           </div>
 
@@ -1030,7 +1043,11 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                                 </span>
                               ))}
                             </div>
-                            <h3>{row.name}</h3>
+                            <h3
+                              className={`rarity-title-${displayRarity.toLowerCase()}`}
+                            >
+                              {row.name}
+                            </h3>
                             <p>
                               {row.type}
                               {row.domains.length ? ` · ${row.domains.join(" / ")}` : ""}
