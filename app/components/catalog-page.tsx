@@ -159,7 +159,7 @@ function variantsForFilter(row: CatalogRow, filter: FilterKind) {
   if (filter === "extras") return row.isExtra ? row.variants : [];
   if (isSpecialFilter(filter)) {
     if (!matchesSpecialFilter(row, filter)) return [];
-    if (filter === "crystal-rose") return variantsOf(row, "alternate");
+    if (filter === "crystal-rose") return variantsOf(row, "crystal-rose");
     return row.variants.filter(
       (variant) =>
         variant.kind === "overnumbered" || variant.kind === "signature",
@@ -215,6 +215,7 @@ function rarityLabel(rarity: string) {
 function kindLabel(kind: VariantKind) {
   if (kind === "base") return "Normale";
   if (kind === "alternate") return "Alternative";
+  if (kind === "crystal-rose") return "Crystal Rose";
   if (kind === "overnumbered") return "Outnumbered";
   if (kind === "signature") return "Signée";
   return "Variante";
@@ -471,13 +472,16 @@ function PriceCell({
   } else if (column === "foil") {
     primary = base ? getActivePrice(base.foil, mode) : null;
   } else {
-    const kind =
+    variants =
       column === "alternate"
-        ? "alternate"
-        : column === "overnumbered"
-          ? "overnumbered"
-          : "signature";
-    variants = associatedVariantsOf(row, kind);
+        ? [
+            ...associatedVariantsOf(row, "alternate"),
+            ...associatedVariantsOf(row, "crystal-rose"),
+          ]
+        : associatedVariantsOf(
+            row,
+            column === "overnumbered" ? "overnumbered" : "signature",
+          );
     const first = variants[0];
     if (first) {
       primary = getPrimaryVariantPrice(first, mode);
@@ -806,8 +810,14 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 <strong>{payload.stats.cards}</strong>
               </div>
               <div>
-                <span>Produits cotés</span>
-                <strong>{payload.stats.products}</strong>
+                <span>Total collection</span>
+                <div className="stat-total">
+                  <strong>{payload.stats.products}</strong>
+                  <small>
+                    ({payload.stats.cards} + {payload.stats.alternatives} a +{" "}
+                    {payload.stats.signatures} *)
+                  </small>
+                </div>
               </div>
               <div>
                 <span>Alternatives</span>

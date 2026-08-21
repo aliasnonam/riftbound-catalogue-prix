@@ -24,7 +24,11 @@ function getDisplayedVariantPrices(
   variant: CatalogVariant,
   priceMode: PriceMode,
 ) {
-  if (variant.kind === "base" || variant.kind === "alternate") {
+  if (
+    variant.kind === "base" ||
+    variant.kind === "alternate" ||
+    variant.kind === "crystal-rose"
+  ) {
     return [
       getActivePrice(variant.standard, priceMode),
       getActivePrice(variant.foil, priceMode),

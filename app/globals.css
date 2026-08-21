@@ -299,6 +299,8 @@ a { color: inherit; text-decoration: none; }
   text-transform: uppercase;
 }
 .stat-strip strong { color: var(--set-accent); font-family: Georgia, serif; font-size: 28px; font-weight: 500; }
+.stat-total { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.stat-total small { color: var(--muted); font-family: ui-monospace, monospace; font-size: 9px; font-weight: 650; white-space: nowrap; }
 
 .filter-shell {
   margin-top: 28px;
@@ -641,6 +643,7 @@ a { color: inherit; text-decoration: none; }
 .variant-title-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .variant-kind { padding: 3px 6px; border-radius: 999px; background: rgba(255,255,255,.05); color: var(--muted); font-size: 7px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .kind-alternate { background: rgba(82,203,183,.1); color: #72d7c7; }
+.kind-crystal-rose { background: rgba(247,153,211,.12); color: #f5a8d7; }
 .kind-overnumbered { background: rgba(170,131,255,.11); color: #b99aff; }
 .kind-signature { background: rgba(231,184,92,.11); color: #edc979; }
 .variant-number { color: #6f7681; font-family: ui-monospace, monospace; font-size: 8px; }

@@ -63,6 +63,7 @@ export type PriceGuide = {
 export type VariantKind =
   | "base"
   | "alternate"
+  | "crystal-rose"
   | "overnumbered"
   | "signature"
   | "other";
@@ -444,37 +445,37 @@ const SPECIAL_CARD_DEFINITIONS: Partial<
     "kaisa survivor": {
       number: "SP1",
       rarity: "Showcase",
-      kind: "alternate",
+      kind: "crystal-rose",
       edition: "crystal-rose",
     },
     "sona harmonious": {
       number: "SP2",
       rarity: "Showcase",
-      kind: "alternate",
+      kind: "crystal-rose",
       edition: "crystal-rose",
     },
     "ahri inquisitive": {
       number: "SP3",
       rarity: "Showcase",
-      kind: "alternate",
+      kind: "crystal-rose",
       edition: "crystal-rose",
     },
     "sett brawler": {
       number: "SP4",
       rarity: "Showcase",
-      kind: "alternate",
+      kind: "crystal-rose",
       edition: "crystal-rose",
     },
     "ezreal prodigy": {
       number: "SP5",
       rarity: "Showcase",
-      kind: "alternate",
+      kind: "crystal-rose",
       edition: "crystal-rose",
     },
     "lux crownguard": {
       number: "SP6",
       rarity: "Showcase",
-      kind: "alternate",
+      kind: "crystal-rose",
       edition: "crystal-rose",
     },
   },
@@ -703,14 +704,16 @@ function inferKind(card: RawCard, set: SetDefinition): VariantKind {
 const KIND_RANK: Record<VariantKind, number> = {
   base: 0,
   alternate: 1,
-  overnumbered: 2,
-  signature: 3,
-  other: 4,
+  "crystal-rose": 2,
+  overnumbered: 3,
+  signature: 4,
+  other: 5,
 };
 
 function variantLabel(kind: VariantKind, index: number) {
   if (kind === "base") return "Version normale";
   if (kind === "alternate") return "Alternative";
+  if (kind === "crystal-rose") return "Crystal Rose";
   if (kind === "overnumbered") return "Outnumbered";
   if (kind === "signature") return "Signée";
   return `Variante ${index + 1}`;
@@ -935,6 +938,7 @@ export function buildCatalog(args: {
         kind: draft.kind,
         rarity:
           draft.kind === "alternate" ||
+          draft.kind === "crystal-rose" ||
           draft.kind === "overnumbered" ||
           draft.kind === "signature"
             ? "Showcase"
@@ -1133,6 +1137,12 @@ export function buildCatalog(args: {
   });
 
   const variants = rows.flatMap((row) => row.variants);
+  const alternativeCount = variants.filter(
+    (variant) => variant.kind === "alternate",
+  ).length;
+  const signatureCount = variants.filter(
+    (variant) => variant.kind === "signature",
+  ).length;
   return {
     set: {
       code: set.code,
@@ -1147,14 +1157,12 @@ export function buildCatalog(args: {
     rows,
     stats: {
       cards: rows.length,
-      products: variants.filter((variant) => variant.productId !== null).length,
-      alternatives: variants.filter((variant) => variant.kind === "alternate")
-        .length,
+      products: rows.length + alternativeCount + signatureCount,
+      alternatives: alternativeCount,
       overnumbered: variants.filter(
         (variant) => variant.kind === "overnumbered",
       ).length,
-      signatures: variants.filter((variant) => variant.kind === "signature")
-        .length,
+      signatures: signatureCount,
       extras: rows.filter((row) => row.isExtra).length,
     },
   };
