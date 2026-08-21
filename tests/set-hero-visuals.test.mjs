@@ -49,3 +49,11 @@ test("renders a four-column binder and simplified mobile hero visuals", () => {
     /@media \(max-width: 680px\)[\s\S]*\.featured-hero-card \{[^}]*width: 154px;[^}]*opacity: \.21;/,
   );
 });
+
+test("keeps the soft set glow without a circular outline behind featured cards", () => {
+  assert.match(
+    css,
+    /\.featured-hero-card::before \{[^}]*radial-gradient/s,
+  );
+  assert.doesNotMatch(css, /\.featured-hero-card::after\s*\{/);
+});
