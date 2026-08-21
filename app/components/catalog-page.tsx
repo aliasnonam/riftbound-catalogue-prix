@@ -531,7 +531,6 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [refreshState, setRefreshState] = useState<RefreshState>("idle");
   const [cooldownClock, setCooldownClock] = useState(() => Date.now());
-  const [filterTabsHintVisible, setFilterTabsHintVisible] = useState(false);
   const [setNavHints, setSetNavHints] = useState({ left: false, right: false });
   const refreshResetTimerRef = useRef<number | null>(null);
   const filterTabsRef = useRef<HTMLDivElement | null>(null);
@@ -675,20 +674,6 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     if (!tabs) return;
 
     tabs.scrollLeft = 0;
-    const updateScrollHint = () => {
-      const remainingScroll = tabs.scrollWidth - tabs.clientWidth - tabs.scrollLeft;
-      setFilterTabsHintVisible(remainingScroll > 4);
-    };
-
-    updateScrollHint();
-    tabs.addEventListener("scroll", updateScrollHint, { passive: true });
-    const resizeObserver = new ResizeObserver(updateScrollHint);
-    resizeObserver.observe(tabs);
-
-    return () => {
-      tabs.removeEventListener("scroll", updateScrollHint);
-      resizeObserver.disconnect();
-    };
   }, [setCode]);
 
   useEffect(() => {
@@ -1051,12 +1036,6 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                   </button>
                 ))}
               </div>
-              <span
-                className={`filter-tabs-scroll-hint${filterTabsHintVisible ? " is-visible" : ""}`}
-                aria-hidden="true"
-              >
-                ›
-              </span>
             </div>
           </div>
 
