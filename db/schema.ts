@@ -1,4 +1,10 @@
-// Intentionally empty by default.
-// Add Drizzle tables here when the site actually needs a database.
-// See examples/d1/db/schema.ts for an opt-in example.
-export {};
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const marketPriceCache = sqliteTable("market_price_cache", {
+  key: text("key").primaryKey(),
+  pricesJson: text("prices_json").notNull(),
+  sourceVersion: integer("source_version").notNull(),
+  sourceCreatedAt: text("source_created_at").notNull(),
+  syncedAt: text("synced_at").notNull(),
+  matchedProducts: integer("matched_products").notNull(),
+});

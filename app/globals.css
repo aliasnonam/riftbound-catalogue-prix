@@ -262,6 +262,7 @@ a { color: inherit; text-decoration: none; }
 .update-card strong { font-size: 12px; font-weight: 700; }
 .update-card div span { color: var(--muted); font-size: 10px; }
 .update-card button {
+  min-width: 78px;
   padding: 8px 10px;
   border: 0;
   border-radius: 9px;
@@ -269,8 +270,12 @@ a { color: inherit; text-decoration: none; }
   color: var(--muted-strong);
   font-size: 10px;
   font-weight: 700;
+  white-space: nowrap;
 }
-.update-card button:hover { background: rgba(255,255,255,.1); color: var(--text); }
+.update-card button:hover:not(:disabled) { background: rgba(255,255,255,.1); color: var(--text); }
+.update-card button:disabled { cursor: wait; opacity: .78; }
+.update-card button.is-success { background: rgba(99,214,159,.12); color: #7ce2b4; }
+.update-card button.is-error { background: rgba(240,123,98,.12); color: #f0927f; font-size: 9px; }
 
 .stat-strip {
   display: grid;

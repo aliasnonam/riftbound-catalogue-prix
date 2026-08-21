@@ -40,6 +40,13 @@ type FilterKind =
   | "extras"
   | SpecialCategory;
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
+type RefreshState = "idle" | "loading" | "success" | "error";
+
+type CatalogRefreshResponse = {
+  payload: CatalogPayload;
+  refreshStatus: "updated" | "unchanged";
+  updatedProducts: number;
+};
 
 const PAGE_SIZE = 50;
 
@@ -580,6 +587,8 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [priceMode, setPriceMode] = useState<PriceMode>("low");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [refreshState, setRefreshState] = useState<RefreshState>("idle");
+  const refreshResetTimerRef = useRef<number | null>(null);
   const availableFilters = FILTERS_BY_SET[setCode];
   const activeFilterKind = availableFilters.some(
     (filter) => filter.id === filterKind,
@@ -588,14 +597,13 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     : "all";
 
   const loadCatalog = useCallback(
-    async (refresh = false) => {
+    async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(
-          `/api/catalog?set=${setCode}${refresh ? "&refresh=1" : ""}`,
-          { cache: "no-store" },
-        );
+        const response = await fetch(`/api/catalog?set=${setCode}`, {
+          cache: "no-store",
+        });
         if (!response.ok) throw new Error("Le catalogue n'a pas pu être chargé.");
         const nextPayload = (await response.json()) as CatalogPayload;
         setPayload(nextPayload);
@@ -612,8 +620,42 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     [setCode],
   );
 
+  const refreshCatalog = useCallback(async () => {
+    if (refreshResetTimerRef.current !== null) {
+      window.clearTimeout(refreshResetTimerRef.current);
+      refreshResetTimerRef.current = null;
+    }
+    setRefreshState("loading");
+
+    try {
+      const response = await fetch(`/api/catalog/refresh?set=${setCode}`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Cardmarket refresh failed");
+      const result = (await response.json()) as CatalogRefreshResponse;
+      setPayload(result.payload);
+      setError(null);
+      setRefreshState("success");
+      refreshResetTimerRef.current = window.setTimeout(() => {
+        setRefreshState("idle");
+        refreshResetTimerRef.current = null;
+      }, 2500);
+    } catch {
+      setRefreshState("error");
+      refreshResetTimerRef.current = window.setTimeout(() => {
+        setRefreshState("idle");
+        refreshResetTimerRef.current = null;
+      }, 4000);
+    }
+  }, [setCode]);
+
   useEffect(() => {
     let active = true;
+    if (refreshResetTimerRef.current !== null) {
+      window.clearTimeout(refreshResetTimerRef.current);
+      refreshResetTimerRef.current = null;
+    }
     fetch(`/api/catalog?set=${setCode}`, { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error("Le catalogue n'a pas pu être chargé.");
@@ -638,6 +680,10 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
 
     return () => {
       active = false;
+      if (refreshResetTimerRef.current !== null) {
+        window.clearTimeout(refreshResetTimerRef.current);
+        refreshResetTimerRef.current = null;
+      }
     };
   }, [setCode]);
 
@@ -796,8 +842,20 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                   </strong>
                   <span>{DATE.format(new Date(payload.pricesUpdatedAt))}</span>
                 </div>
-                <button type="button" onClick={() => void loadCatalog(true)}>
-                  Actualiser
+                <button
+                  className={`refresh-button is-${refreshState}`}
+                  type="button"
+                  disabled={refreshState === "loading"}
+                  aria-live="polite"
+                  onClick={() => void refreshCatalog()}
+                >
+                  {refreshState === "loading"
+                    ? "Actualisation…"
+                    : refreshState === "success"
+                      ? "À jour ✓"
+                      : refreshState === "error"
+                        ? "Échec de l’actualisation"
+                        : "Actualiser"}
                 </button>
               </div>
             ) : null}
@@ -938,7 +996,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 <strong>Impossible de charger les prix.</strong>
                 <p>{error}</p>
               </div>
-              <button type="button" onClick={() => void loadCatalog(true)}>
+              <button type="button" onClick={() => void loadCatalog()}>
                 Réessayer
               </button>
             </div>
