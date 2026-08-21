@@ -28,8 +28,10 @@ import {
 } from "@/lib/catalog-presentation";
 import {
   compareByHighestActivePrice,
-  getActivePrice,
   getPrimaryVariantPrice,
+  getVariantActivePrices,
+  getVariantFoilPrice,
+  getVariantNormalPrice,
   type PriceMode,
 } from "@/lib/pricing";
 import {
@@ -331,12 +333,8 @@ function filteredMaxPrice(
   const relevantVariants = variantsForFilter(row, filter).filter(
     (variant) => rarity === "all" || variant.rarity === rarity,
   );
-  const values = relevantVariants.flatMap((variant) => [
-    getActivePrice(variant.standard, mode),
-    getActivePrice(variant.foil, mode),
-  ]);
-  const availableValues = values.filter(
-    (value): value is number => value !== null,
+  const availableValues = relevantVariants.flatMap((variant) =>
+    getVariantActivePrices(variant, mode),
   );
   return availableValues.length ? Math.max(...availableValues) : null;
 }
@@ -346,12 +344,22 @@ function rarityLabel(rarity: string) {
 }
 
 function kindLabel(kind: VariantKind) {
-  if (kind === "base") return "Normale";
+  if (kind === "base") return "Carte du set";
   if (kind === "alternate") return "Alternative";
   if (kind === "crystal-rose") return "Crystal Rose";
   if (kind === "overnumbered") return "Outnumbered";
   if (kind === "signature") return "Signée";
   return "Variante";
+}
+
+function variantBadgeLabel(variant: CatalogVariant) {
+  return variant.kind === "base"
+    ? rarityLabel(variant.rarity)
+    : kindLabel(variant.kind);
+}
+
+function rarityClassName(rarity: string) {
+  return rarity.toLocaleLowerCase("en").replace(/[^a-z0-9]+/g, "-");
 }
 
 function modeLabel(mode: PriceMode) {
@@ -1007,22 +1015,26 @@ function PriceCell({
   row,
   column,
   mode,
+  displayVariant,
 }: {
   row: CatalogRow;
   column: "normal" | "foil" | "alternate" | "overnumbered" | "signature";
   mode: PriceMode;
+  displayVariant: CatalogVariant | undefined;
 }) {
   const base = row.associatedVariants.find(
     (variant) => variant.kind === "base",
   );
   let variants: CatalogVariant[] = [];
   let primary: number | null = null;
-  let secondary: number | null = null;
 
   if (column === "normal") {
-    primary = base ? getActivePrice(base.standard, mode) : null;
+    primary =
+      displayVariant?.pricing === "dual" && base
+        ? getVariantNormalPrice(base, mode)
+        : null;
   } else if (column === "foil") {
-    primary = base ? getActivePrice(base.foil, mode) : null;
+    primary = base ? getVariantFoilPrice(base, mode) : null;
   } else {
     variants =
       column === "alternate"
@@ -1037,19 +1049,13 @@ function PriceCell({
     const first = variants[0];
     if (first) {
       primary = getPrimaryVariantPrice(first, mode);
-      if (column === "alternate") {
-        secondary = getActivePrice(first.foil, mode);
-        if (secondary === primary) secondary = null;
-      }
     }
   }
 
   return (
     <div className={`price-cell ${primary === null ? "is-empty" : ""}`}>
       <span className="price-value">{formatPrice(primary)}</span>
-      {secondary !== null ? (
-        <span className="price-note">foil {formatPrice(secondary)}</span>
-      ) : variants.length > 1 ? (
+      {variants.length > 1 ? (
         <span className="price-note">+{variants.length - 1} variante</span>
       ) : null}
     </div>
@@ -1076,12 +1082,14 @@ function VariantDetails({ row, mode }: { row: CatalogRow; mode: PriceMode }) {
             <CardPreviewThumb
               className="variant-thumb"
               imageUrl={variant.imageUrl}
-              name={`${variant.name} — ${kindLabel(variant.kind)}`}
+              name={`${variant.name} — ${variantBadgeLabel(variant)}`}
             />
             <div className="variant-copy">
               <div className="variant-title-line">
-                <span className={`variant-kind kind-${variant.kind}`}>
-                  {kindLabel(variant.kind)}
+                <span
+                  className={`variant-kind kind-${variant.kind} rarity-${rarityClassName(variant.rarity)}`}
+                >
+                  {variantBadgeLabel(variant)}
                 </span>
                 <span className="variant-number">{variant.number}</span>
               </div>
@@ -1090,16 +1098,22 @@ function VariantDetails({ row, mode }: { row: CatalogRow; mode: PriceMode }) {
               >
                 {variant.name}
               </strong>
-              <div className="variant-prices">
-                <span>
-                  Normal
-                  <b>{formatPrice(getActivePrice(variant.standard, mode))}</b>
-                </span>
-                <span>
-                  Foil
-                  <b>{formatPrice(getActivePrice(variant.foil, mode))}</b>
-                </span>
-              </div>
+              {variant.pricing === "dual" ? (
+                <div className="variant-prices">
+                  <span>
+                    Normal
+                    <b>{formatPrice(getVariantNormalPrice(variant, mode))}</b>
+                  </span>
+                  <span>
+                    Foil
+                    <b>{formatPrice(getVariantFoilPrice(variant, mode))}</b>
+                  </span>
+                </div>
+              ) : (
+                <div className="variant-prices variant-prices--single">
+                  <b>{formatPrice(getPrimaryVariantPrice(variant, mode))}</b>
+                </div>
+              )}
             </div>
           </article>
         ))}
@@ -1886,11 +1900,11 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                             </p>
                           </div>
                         </div>
-                        <PriceCell row={row} column="normal" mode={priceMode} />
-                        <PriceCell row={row} column="foil" mode={priceMode} />
-                        <PriceCell row={row} column="alternate" mode={priceMode} />
-                        <PriceCell row={row} column="overnumbered" mode={priceMode} />
-                        <PriceCell row={row} column="signature" mode={priceMode} />
+                        <PriceCell row={row} column="normal" mode={priceMode} displayVariant={displayVariant} />
+                        <PriceCell row={row} column="foil" mode={priceMode} displayVariant={displayVariant} />
+                        <PriceCell row={row} column="alternate" mode={priceMode} displayVariant={displayVariant} />
+                        <PriceCell row={row} column="overnumbered" mode={priceMode} displayVariant={displayVariant} />
+                        <PriceCell row={row} column="signature" mode={priceMode} displayVariant={displayVariant} />
                         <button
                           className="expand-button"
                           type="button"

@@ -4,7 +4,10 @@ import test from "node:test";
 import {
   compareByHighestActivePrice,
   getActivePrice,
+  getPrimaryVariantPrice,
   getSortValue,
+  getVariantFoilPrice,
+  getVariantNormalPrice,
 } from "../lib/pricing.ts";
 
 const emptyPrice = { low: null, trend: null, avg30: null };
@@ -17,7 +20,8 @@ function row(name, sortOrder, prices, foilPrices = {}) {
     associatedVariants: [
       {
         kind: "base",
-        standard: { ...emptyPrice, ...prices },
+        pricing: "dual",
+        normal: { ...emptyPrice, ...prices },
         foil: { ...emptyPrice, ...foilPrices },
       },
     ],
@@ -44,18 +48,19 @@ test("getSortValue uses the maximum active price across associated impressions",
     associatedVariants: [
       {
         kind: "base",
-        standard: { low: 0.05, trend: 0.87, avg30: 0.5 },
+        pricing: "dual",
+        normal: { low: 0.05, trend: 0.87, avg30: 0.5 },
         foil: { low: 0.05, trend: 1.01, avg30: 0.8 },
       },
       {
         kind: "overnumbered",
-        standard: { low: 140, trend: 144, avg30: 142 },
-        foil: emptyPrice,
+        pricing: "single",
+        price: { low: 140, trend: 144, avg30: 142 },
       },
       {
         kind: "signature",
-        standard: { low: 1100, trend: 2596.66, avg30: 2200 },
-        foil: emptyPrice,
+        pricing: "single",
+        price: { low: 1100, trend: 2596.66, avg30: 2200 },
       },
     ],
   };
@@ -71,8 +76,8 @@ test("collector rows sort with the same primary value shown in their column", ()
     associatedVariants: [
       {
         kind: "signature",
-        standard: { low: 400, trend: 564.01, avg30: 510 },
-        foil: { low: 1200, trend: 1678.77, avg30: 1500 },
+        pricing: "single",
+        price: { low: 400, trend: 564.01, avg30: 510 },
       },
     ],
   };
@@ -81,8 +86,8 @@ test("collector rows sort with the same primary value shown in their column", ()
     associatedVariants: [
       {
         kind: "signature",
-        standard: { low: 350, trend: 875.35, avg30: 620 },
-        foil: emptyPrice,
+        pricing: "single",
+        price: { low: 350, trend: 875.35, avg30: 620 },
       },
     ],
   };
@@ -94,6 +99,30 @@ test("collector rows sort with the same primary value shown in their column", ()
       .map((item) => item.name),
     ["Yasuo", "Jinx"],
   );
+});
+
+test("single-print rarities never expose a Normal price", () => {
+  const rare = {
+    kind: "base",
+    pricing: "single",
+    price: { low: 0.02, trend: 0.17, avg30: 0.27 },
+  };
+
+  assert.equal(getVariantNormalPrice(rare, "low"), null);
+  assert.equal(getVariantFoilPrice(rare, "low"), 0.02);
+  assert.equal(getPrimaryVariantPrice(rare, "trend"), 0.17);
+});
+
+test("Common and Uncommon base cards keep distinct Normal and Foil prices", () => {
+  const common = {
+    kind: "base",
+    pricing: "dual",
+    normal: { low: 0.02, trend: 0.04, avg30: 0.03 },
+    foil: { low: 0.08, trend: 0.12, avg30: 0.1 },
+  };
+
+  assert.equal(getVariantNormalPrice(common, "low"), 0.02);
+  assert.equal(getVariantFoilPrice(common, "low"), 0.08);
 });
 
 test("changing price mode rebuilds a descending order and keeps missing values last", () => {

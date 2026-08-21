@@ -14,23 +14,46 @@ export function getPrimaryVariantPrice(
   variant: CatalogVariant,
   priceMode: PriceMode,
 ) {
+  if (variant.pricing === "single") {
+    return getActivePrice(variant.price, priceMode);
+  }
+
   return (
-    getActivePrice(variant.standard, priceMode) ??
+    getActivePrice(variant.normal, priceMode) ??
     getActivePrice(variant.foil, priceMode)
   );
 }
 
-function getDisplayedVariantPrices(
+export function getVariantNormalPrice(
   variant: CatalogVariant,
   priceMode: PriceMode,
 ) {
-  if (
-    variant.kind === "base" ||
-    variant.kind === "alternate" ||
-    variant.kind === "crystal-rose"
-  ) {
+  if (variant.pricing !== "dual") return null;
+  return getActivePrice(variant.normal, priceMode);
+}
+
+export function getVariantFoilPrice(
+  variant: CatalogVariant,
+  priceMode: PriceMode,
+) {
+  if (variant.pricing === "dual") {
+    return getActivePrice(variant.foil, priceMode);
+  }
+
+  // Une impression unique du set numéroté (Rare, Epic, Ultimate, etc.)
+  // occupe la colonne Foil ; sa colonne Normal reste volontairement vide.
+  return variant.kind === "base"
+    ? getActivePrice(variant.price, priceMode)
+    : null;
+}
+
+export function getVariantActivePrices(
+  variant: CatalogVariant,
+  priceMode: PriceMode,
+) {
+  if (variant.pricing === "dual") {
     return [
-      getActivePrice(variant.standard, priceMode),
+      getActivePrice(variant.normal, priceMode),
       getActivePrice(variant.foil, priceMode),
     ].filter((value): value is number => value !== null);
   }
@@ -41,7 +64,7 @@ function getDisplayedVariantPrices(
 
 export function getSortValue(row: CatalogRow, priceMode: PriceMode) {
   const availableValues = row.associatedVariants
-    .flatMap((variant) => getDisplayedVariantPrices(variant, priceMode));
+    .flatMap((variant) => getVariantActivePrices(variant, priceMode));
 
   return availableValues.length ? Math.max(...availableValues) : null;
 }

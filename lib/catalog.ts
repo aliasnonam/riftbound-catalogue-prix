@@ -83,7 +83,7 @@ export type PriceSeries = {
   avg30: number | null;
 };
 
-export type CatalogVariant = {
+type CatalogVariantIdentity = {
   id: string;
   name: string;
   number: string;
@@ -93,9 +93,20 @@ export type CatalogVariant = {
   imageUrl: string | null;
   artist: string | null;
   productId: number | null;
-  standard: PriceSeries;
-  foil: PriceSeries;
 };
+
+export type CatalogVariant = CatalogVariantIdentity &
+  (
+    | {
+        pricing: "dual";
+        normal: PriceSeries;
+        foil: PriceSeries;
+      }
+    | {
+        pricing: "single";
+        price: PriceSeries;
+      }
+  );
 
 export type CatalogRow = {
   id: string;
@@ -756,6 +767,52 @@ function foilSeries(price: PriceGuide | undefined): PriceSeries {
   };
 }
 
+function hasDualFinish(kind: VariantKind, rarity: string) {
+  const normalizedRarity = rarity.toLocaleLowerCase("en");
+  return (
+    kind === "base" &&
+    (normalizedRarity === "common" || normalizedRarity === "uncommon")
+  );
+}
+
+function validGuideValue(value: number | null | undefined) {
+  return value !== null && value !== undefined && value > 0 ? value : null;
+}
+
+function singlePriceSeries(
+  price: PriceGuide | undefined,
+  preferFoil: boolean,
+): PriceSeries {
+  if (!price) return EMPTY_PRICE;
+
+  const preferred = preferFoil
+    ? {
+        low: price["low-foil"],
+        trend: price["trend-foil"],
+        avg30: price["avg30-foil"],
+      }
+    : {
+        low: price.low,
+        trend: price.trend,
+        avg30: price.avg30,
+      };
+  const fallback = preferFoil
+    ? { low: price.low, trend: price.trend, avg30: price.avg30 }
+    : {
+        low: price["low-foil"],
+        trend: price["trend-foil"],
+        avg30: price["avg30-foil"],
+      };
+
+  return {
+    low: validGuideValue(preferred.low) ?? validGuideValue(fallback.low),
+    trend:
+      validGuideValue(preferred.trend) ?? validGuideValue(fallback.trend),
+    avg30:
+      validGuideValue(preferred.avg30) ?? validGuideValue(fallback.avg30),
+  };
+}
+
 type VariantDraft = {
   card: RawCard | null;
   kind: VariantKind;
@@ -921,7 +978,17 @@ export function buildCatalog(args: {
         fallbackCard?.media.image_url ??
         null;
 
-      return {
+      const rarity =
+        draft.kind === "alternate" ||
+        draft.kind === "crystal-rose" ||
+        draft.kind === "overnumbered" ||
+        draft.kind === "signature"
+          ? "Showcase"
+          : draft.card?.classification.rarity ??
+            definition?.rarity ??
+            fallbackCard?.classification.rarity ??
+            (rowType === "Rune" || rowType === "Token" ? "Special" : "—");
+      const identity: CatalogVariantIdentity = {
         id:
           draft.card?.id ??
           `${set.code}-${product?.idProduct ?? `${key}-${index}`}`,
@@ -938,16 +1005,7 @@ export function buildCatalog(args: {
               ? inferredSignatureNumber ?? "—"
               : "—"),
         kind: draft.kind,
-        rarity:
-          draft.kind === "alternate" ||
-          draft.kind === "crystal-rose" ||
-          draft.kind === "overnumbered" ||
-          draft.kind === "signature"
-            ? "Showcase"
-            : draft.card?.classification.rarity ??
-              definition?.rarity ??
-              fallbackCard?.classification.rarity ??
-              (rowType === "Rune" || rowType === "Token" ? "Special" : "—"),
+        rarity,
         label: variantLabel(draft.kind, index),
         imageUrl: inheritedImage,
         artist:
@@ -956,8 +1014,24 @@ export function buildCatalog(args: {
           fallbackCard?.media.artist ??
           null,
         productId: product?.idProduct ?? null,
-        standard: standardSeries(price),
-        foil: foilSeries(price),
+      };
+
+      if (hasDualFinish(draft.kind, rarity)) {
+        return {
+          ...identity,
+          pricing: "dual",
+          normal: standardSeries(price),
+          foil: foilSeries(price),
+        };
+      }
+
+      return {
+        ...identity,
+        pricing: "single",
+        // Les Rare/Epic/Ultimate du set numéroté n'existent qu'en foil.
+        // Les traitements collector Cardmarket utilisent leur prix produit
+        // principal, avec repli par métrique sur le canal foil si nécessaire.
+        price: singlePriceSeries(price, draft.kind === "base"),
       };
     });
 
