@@ -532,8 +532,10 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [refreshState, setRefreshState] = useState<RefreshState>("idle");
   const [cooldownClock, setCooldownClock] = useState(() => Date.now());
   const [filterTabsHintVisible, setFilterTabsHintVisible] = useState(false);
+  const [setNavHints, setSetNavHints] = useState({ left: false, right: false });
   const refreshResetTimerRef = useRef<number | null>(null);
   const filterTabsRef = useRef<HTMLDivElement | null>(null);
+  const setNavRef = useRef<HTMLElement | null>(null);
   const availableFilters = FILTERS_BY_SET[setCode];
   const activeFilterKind = availableFilters.some(
     (filter) => filter.id === filterKind,
@@ -689,6 +691,42 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     };
   }, [setCode]);
 
+  useEffect(() => {
+    const nav = setNavRef.current;
+    if (!nav) return;
+
+    const updateScrollHints = () => {
+      const left = nav.scrollLeft > 4;
+      const right = nav.scrollWidth - nav.clientWidth - nav.scrollLeft > 4;
+      setSetNavHints((current) =>
+        current.left === left && current.right === right
+          ? current
+          : { left, right },
+      );
+    };
+
+    const frame = window.requestAnimationFrame(() => {
+      const activeSet = nav.querySelector<HTMLElement>('[aria-current="page"]');
+      if (activeSet) {
+        nav.scrollLeft = Math.max(
+          0,
+          activeSet.offsetLeft - (nav.clientWidth - activeSet.offsetWidth) / 2,
+        );
+      }
+      updateScrollHints();
+    });
+
+    nav.addEventListener("scroll", updateScrollHints, { passive: true });
+    const resizeObserver = new ResizeObserver(updateScrollHints);
+    resizeObserver.observe(nav);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      nav.removeEventListener("scroll", updateScrollHints);
+      resizeObserver.disconnect();
+    };
+  }, [setCode]);
+
   const rarities = useMemo(() => {
     if (!payload) return [];
     return [
@@ -799,18 +837,32 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
             <small>Catalogue & prix</small>
           </span>
         </Link>
-        <nav className="set-nav" aria-label="Choisir un set">
-          {SETS.map((item) => (
-            <Link
-              href={getSetHref(item.code)}
-              key={item.code}
-              aria-current={item.code === setCode ? "page" : undefined}
-            >
-              <span>{String(item.number).padStart(2, "0")}</span>
-              {item.name}
-            </Link>
-          ))}
-        </nav>
+        <div className="set-nav-wrap">
+          <nav className="set-nav" ref={setNavRef} aria-label="Choisir un set">
+            {SETS.map((item) => (
+              <Link
+                href={getSetHref(item.code)}
+                key={item.code}
+                aria-current={item.code === setCode ? "page" : undefined}
+              >
+                <span>{String(item.number).padStart(2, "0")}</span>
+                {item.name}
+              </Link>
+            ))}
+          </nav>
+          <span
+            className={`set-nav-scroll-hint is-left${setNavHints.left ? " is-visible" : ""}`}
+            aria-hidden="true"
+          >
+            ‹
+          </span>
+          <span
+            className={`set-nav-scroll-hint is-right${setNavHints.right ? " is-visible" : ""}`}
+            aria-hidden="true"
+          >
+            ›
+          </span>
+        </div>
       </header>
 
       <main>
