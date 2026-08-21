@@ -54,6 +54,23 @@ type CatalogCooldownResponse = {
   refreshAvailableAt: string;
 };
 
+type HeroPreviewCard = {
+  number?: string;
+  name: string;
+  imageUrl: string;
+  crop?: "left" | "right";
+};
+
+type RivalCardDefinition = {
+  number: number;
+  name: string;
+};
+
+type RivalDiptych = {
+  imageUrl: string;
+  cards: readonly [RivalCardDefinition, RivalCardDefinition];
+};
+
 const PAGE_SIZE = 50;
 
 const VENDETTA_RIVAL_CARDS = {
@@ -70,13 +87,15 @@ const VENDETTA_RIVAL_CARDS = {
 } as const;
 
 const FEATURED_HERO_CARDS: Partial<
-  Record<SetCode, { name: string; imageUrl: string }>
+  Record<SetCode, HeroPreviewCard>
 > = {
   SFD: {
+    number: "227*",
     name: "Ahri, Inquisitive — signée",
     imageUrl: "/hero/sfd-ahri-signed.webp",
   },
   UNL: {
+    number: "238",
     name: "Baron Nashor",
     imageUrl: "/hero/unl-baron-nashor.webp",
   },
@@ -142,6 +161,86 @@ const ORIGINS_SIGNED_HERO_CARDS = [
     number: "310*",
     name: "Sett — The Boss",
     imageUrl: "/hero/ogn-310-signed.webp",
+  },
+] as const;
+
+const RIVAL_DIPTYCHES: readonly RivalDiptych[] = [
+  {
+    imageUrl: "/hero/rivals/01-vi-jinx.webp",
+    cards: [
+      { number: 167, name: "Vi, Destructive" },
+      { number: 168, name: "Jinx, Demolitionist" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/02-zed-shen.webp",
+    cards: [
+      { number: 169, name: "Zed, From the Shadows" },
+      { number: 170, name: "Shen, Scourge of Shadows" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/03-riven-draven.webp",
+    cards: [
+      { number: 171, name: "Riven, Shattered" },
+      { number: 172, name: "Draven, Showboat" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/04-swain-irelia.webp",
+    cards: [
+      { number: 173, name: "Swain, Visionary" },
+      { number: 174, name: "Irelia, Fervent" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/05-jayce-viktor.webp",
+    cards: [
+      { number: 175, name: "Jayce, Man of Progress" },
+      { number: 176, name: "Viktor, Innovator" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/06-renekton-nasus.webp",
+    cards: [
+      { number: 177, name: "Renekton, Brute" },
+      { number: 178, name: "Nasus, Guardian of Knowledge" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/07-rengar-khazix.webp",
+    cards: [
+      { number: 179, name: "Rengar, Trophy Hunter" },
+      { number: 180, name: "Kha’Zix, Evolving Hunter" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/08-gangplank-illaoi.webp",
+    cards: [
+      { number: 181, name: "Gangplank, Naval" },
+      { number: 182, name: "Illaoi, Prophet of the Great Kraken" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/09-diana-leona.webp",
+    cards: [
+      { number: 183, name: "Diana, No Longer Human" },
+      { number: 184, name: "Leona, Determined" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/10-kayle-morgana.webp",
+    cards: [
+      { number: 185, name: "Kayle, Justified" },
+      { number: 186, name: "Morgana, Vindictive" },
+    ],
+  },
+  {
+    imageUrl: "/hero/rivals/11-ambessa-mel.webp",
+    cards: [
+      { number: 187, name: "Ambessa, Respected and Feared" },
+      { number: 188, name: "Mel, Defiant Soul" },
+    ],
   },
 ] as const;
 
@@ -485,6 +584,285 @@ function CardPreviewThumb({
   );
 }
 
+function HeroCardArtwork({ card }: { card: HeroPreviewCard }) {
+  if (!card.crop) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={card.imageUrl} alt={`Carte ${card.name}`} />
+    );
+  }
+
+  return (
+    <span className={`hero-card-crop hero-card-crop--${card.crop}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={card.imageUrl} alt={`Carte ${card.name}`} />
+    </span>
+  );
+}
+
+function HeroCardDialog({
+  card,
+  onClose,
+}: {
+  card: HeroPreviewCard;
+  onClose: () => void;
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => {
+      closeRef.current?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "Tab") {
+        event.preventDefault();
+        closeRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="card-preview-backdrop hero-card-backdrop"
+      role="presentation"
+      onPointerDown={onClose}
+    >
+      <div
+        className="card-preview-dialog hero-card-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Fiche de la carte ${card.name}`}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <button
+          ref={closeRef}
+          className="card-preview-close"
+          type="button"
+          aria-label="Fermer la fiche"
+          onClick={onClose}
+        >
+          ×
+        </button>
+        <div className="hero-card-dialog-artwork">
+          <HeroCardArtwork card={card} />
+        </div>
+        <p>
+          {card.number ? <strong>{card.number}</strong> : null}
+          <span>{card.name}</span>
+        </p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function RivalsGalleryDialog({
+  catalogCards,
+  onClose,
+}: {
+  catalogCards: Readonly<Record<number, HeroPreviewCard>>;
+  onClose: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const [detailCard, setDetailCard] = useState<HeroPreviewCard | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const touchStartXRef = useRef<number | null>(null);
+  const suppressClickUntilRef = useRef(0);
+  const diptych = RIVAL_DIPTYCHES[index];
+
+  const showPrevious = useCallback(() => {
+    setDetailCard(null);
+    setIndex((current) =>
+      current === 0 ? RIVAL_DIPTYCHES.length - 1 : current - 1,
+    );
+  }, []);
+
+  const showNext = useCallback(() => {
+    setDetailCard(null);
+    setIndex((current) => (current + 1) % RIVAL_DIPTYCHES.length);
+  }, []);
+
+  const openCard = useCallback(
+    (side: 0 | 1) => {
+      if (performance.now() < suppressClickUntilRef.current) return;
+      const definition = diptych.cards[side];
+      setDetailCard(
+        catalogCards[definition.number] ?? {
+          number: String(definition.number),
+          name: definition.name,
+          imageUrl: diptych.imageUrl,
+          crop: side === 0 ? "left" : "right",
+        },
+      );
+    },
+    [catalogCards, diptych],
+  );
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => {
+      closeRef.current?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (detailCard) setDetailCard(null);
+        else onClose();
+      } else if (!detailCard && event.key === "ArrowLeft") {
+        showPrevious();
+      } else if (!detailCard && event.key === "ArrowRight") {
+        showNext();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [detailCard, onClose, showNext, showPrevious]);
+
+  return createPortal(
+    <div
+      className="rivals-gallery-backdrop"
+      role="presentation"
+      onPointerDown={onClose}
+    >
+      <section
+        className="rivals-gallery-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Galerie des 11 diptyques Rivals de Vendetta"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <header className="rivals-gallery-header">
+          <div>
+            <span>Vendetta · Rival Overnumbered</span>
+            <h2>{detailCard ? detailCard.name : "Les 11 diptyques Rivals"}</h2>
+          </div>
+          <button
+            ref={closeRef}
+            className="rivals-gallery-close"
+            type="button"
+            aria-label="Fermer la galerie"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </header>
+
+        {detailCard ? (
+          <div className="rivals-card-detail">
+            <button
+              className="rivals-back-button"
+              type="button"
+              onClick={() => setDetailCard(null)}
+            >
+              <span aria-hidden="true">←</span> Retour aux diptyques
+            </button>
+            <div className="rivals-card-detail-artwork">
+              <HeroCardArtwork card={detailCard} />
+            </div>
+            <p>
+              <strong>{detailCard.number}</strong>
+              <span>{detailCard.name}</span>
+            </p>
+          </div>
+        ) : (
+          <>
+            <div
+              className="rivals-gallery-stage"
+              onTouchStart={(event) => {
+                touchStartXRef.current = event.touches[0]?.clientX ?? null;
+              }}
+              onTouchEnd={(event) => {
+                const startX = touchStartXRef.current;
+                const endX = event.changedTouches[0]?.clientX;
+                touchStartXRef.current = null;
+                if (startX === null || endX === undefined) return;
+                const distance = endX - startX;
+                if (Math.abs(distance) < 48) return;
+                suppressClickUntilRef.current = performance.now() + 450;
+                if (distance > 0) showPrevious();
+                else showNext();
+              }}
+            >
+              <button
+                className="rivals-gallery-arrow rivals-gallery-arrow--previous"
+                type="button"
+                aria-label="Diptyque précédent"
+                onClick={showPrevious}
+              >
+                ‹
+              </button>
+              <div className="rivals-gallery-slide" key={diptych.imageUrl}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={diptych.imageUrl}
+                  alt={`${diptych.cards[0].name} face à ${diptych.cards[1].name}`}
+                  draggable="false"
+                />
+                {diptych.cards.map((card, side) => (
+                  <button
+                    className={`rivals-gallery-card-hit rivals-gallery-card-hit--${side === 0 ? "left" : "right"}`}
+                    type="button"
+                    aria-label={`Ouvrir la fiche de ${card.name}`}
+                    onClick={() => openCard(side as 0 | 1)}
+                    key={card.number}
+                  >
+                    <span>
+                      <strong>{card.number}</strong>
+                      {card.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button
+                className="rivals-gallery-arrow rivals-gallery-arrow--next"
+                type="button"
+                aria-label="Diptyque suivant"
+                onClick={showNext}
+              >
+                ›
+              </button>
+            </div>
+
+            <footer className="rivals-gallery-footer">
+              <p>
+                <strong>{index + 1} / {RIVAL_DIPTYCHES.length}</strong>
+                <span>
+                  {diptych.cards[0].name} / {diptych.cards[1].name}
+                </span>
+              </p>
+              <div className="rivals-gallery-progress" aria-hidden="true">
+                {RIVAL_DIPTYCHES.map((item, itemIndex) => (
+                  <span
+                    className={itemIndex === index ? "is-active" : ""}
+                    key={item.imageUrl}
+                  />
+                ))}
+              </div>
+              <small>Balaye horizontalement pour naviguer</small>
+            </footer>
+          </>
+        )}
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function PriceCell({
   row,
   column,
@@ -621,6 +999,8 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [refreshState, setRefreshState] = useState<RefreshState>("idle");
   const [cooldownClock, setCooldownClock] = useState(() => Date.now());
   const [setNavHints, setSetNavHints] = useState({ left: false, right: false });
+  const [heroPreview, setHeroPreview] = useState<HeroPreviewCard | null>(null);
+  const [rivalsGalleryOpen, setRivalsGalleryOpen] = useState(false);
   const refreshResetTimerRef = useRef<number | null>(null);
   const filterTabsRef = useRef<HTMLDivElement | null>(null);
   const setNavRef = useRef<HTMLElement | null>(null);
@@ -763,6 +1143,8 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     if (!tabs) return;
 
     tabs.scrollLeft = 0;
+    setHeroPreview(null);
+    setRivalsGalleryOpen(false);
   }, [setCode]);
 
   useEffect(() => {
@@ -811,6 +1193,39 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       ),
     ].sort((a, b) => RARITY_ORDER.indexOf(a) - RARITY_ORDER.indexOf(b));
   }, [payload]);
+
+  const rivalCatalogCards = useMemo(() => {
+    const cards: Record<number, HeroPreviewCard> = {};
+    if (!payload || setCode !== "VEN") return cards;
+
+    const variants = payload.rows.flatMap((row) => [
+      ...row.variants,
+      ...row.associatedVariants,
+    ]);
+
+    for (const diptych of RIVAL_DIPTYCHES) {
+      for (const definition of diptych.cards) {
+        const matchingVariants = variants.filter((variant) => {
+          const number = variant.number.match(/\d+/)?.[0];
+          return Number(number) === definition.number && variant.imageUrl;
+        });
+        const variant =
+          matchingVariants.find(
+            (candidate) => candidate.kind === "overnumbered",
+          ) ?? matchingVariants[0];
+
+        if (variant?.imageUrl) {
+          cards[definition.number] = {
+            number: variant.number,
+            name: definition.name,
+            imageUrl: variant.imageUrl,
+          };
+        }
+      }
+    }
+
+    return cards;
+  }, [payload, setCode]);
 
   const filteredRows = (() => {
     if (!payload) return [] as CatalogRow[];
@@ -966,28 +1381,50 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               <span>Sortie : {set.release}</span>
               <span>{set.baseSize} cartes dans le set numéroté</span>
             </div>
+            {setCode === "VEN" ? (
+              <button
+                className="hero-rivals-cta"
+                type="button"
+                aria-haspopup="dialog"
+                onClick={() => setRivalsGalleryOpen(true)}
+              >
+                Voir les 11 diptyques Rivals <span aria-hidden="true">→</span>
+              </button>
+            ) : null}
           </div>
           {setCode === "VEN" ? (
             <figure
               className="rival-hero-cards"
               aria-label="Diptyque Rival Overnumbered : Vi face à Jinx"
             >
-              <span className="rival-hero-card rival-hero-card--vi">
+              <button
+                className="rival-hero-card rival-hero-card--vi"
+                type="button"
+                aria-label="Voir les 11 diptyques Rivals à partir de Vi"
+                aria-haspopup="dialog"
+                onClick={() => setRivalsGalleryOpen(true)}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={VENDETTA_RIVAL_CARDS.vi.imageUrl}
                   alt={`Carte ${VENDETTA_RIVAL_CARDS.vi.name}`}
                   decoding="async"
                 />
-              </span>
-              <span className="rival-hero-card rival-hero-card--jinx">
+              </button>
+              <button
+                className="rival-hero-card rival-hero-card--jinx"
+                type="button"
+                aria-label="Voir les 11 diptyques Rivals à partir de Jinx"
+                aria-haspopup="dialog"
+                onClick={() => setRivalsGalleryOpen(true)}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={VENDETTA_RIVAL_CARDS.jinx.imageUrl}
                   alt={`Carte ${VENDETTA_RIVAL_CARDS.jinx.name}`}
                   decoding="async"
                 />
-              </span>
+              </button>
             </figure>
           ) : setCode === "OGN" ? (
             <figure
@@ -996,7 +1433,14 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
             >
               <div className="origins-binder-grid">
                 {ORIGINS_SIGNED_HERO_CARDS.map((card) => (
-                  <span className="origins-binder-slot" key={card.number}>
+                  <button
+                    className="origins-binder-slot"
+                    type="button"
+                    aria-label={`Ouvrir la fiche de ${card.name}, ${card.number}`}
+                    aria-haspopup="dialog"
+                    onClick={() => setHeroPreview(card)}
+                    key={card.number}
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={card.imageUrl}
@@ -1004,7 +1448,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                       decoding="async"
                     />
                     <small>{card.number}</small>
-                  </span>
+                  </button>
                 ))}
               </div>
             </figure>
@@ -1013,14 +1457,20 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               className={`featured-hero-card featured-hero-card--${setCode.toLowerCase()}`}
               aria-label={`Carte mise en avant : ${featuredHeroCard.name}`}
             >
-              <span className="featured-hero-card-frame">
+              <button
+                className="featured-hero-card-frame"
+                type="button"
+                aria-label={`Ouvrir la fiche de ${featuredHeroCard.name}`}
+                aria-haspopup="dialog"
+                onClick={() => setHeroPreview(featuredHeroCard)}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={featuredHeroCard.imageUrl}
                   alt={`Carte ${featuredHeroCard.name}`}
                   decoding="async"
                 />
-              </span>
+              </button>
             </figure>
           ) : (
             <div className="hero-sigil" aria-hidden="true">
@@ -1376,6 +1826,19 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
         </div>
         <p>Données de marché : guide public Cardmarket, actualisé quotidiennement.</p>
       </footer>
+
+      {heroPreview ? (
+        <HeroCardDialog
+          card={heroPreview}
+          onClose={() => setHeroPreview(null)}
+        />
+      ) : null}
+      {rivalsGalleryOpen ? (
+        <RivalsGalleryDialog
+          catalogCards={rivalCatalogCards}
+          onClose={() => setRivalsGalleryOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

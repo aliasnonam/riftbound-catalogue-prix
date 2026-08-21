@@ -35,19 +35,22 @@ test("orders all 12 Origins signed cards from 299 to 310 in the binder", () => {
   assert.match(component, /Planche de collection des 12 cartes signées Outnumbered d’Origins/);
 });
 
-test("renders a four-column binder and simplified mobile hero visuals", () => {
+test("renders a four-column binder and tappable mobile hero visuals", () => {
   assert.match(
     css,
     /\.origins-binder-grid \{[^}]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);/s,
   );
   assert.match(
     css,
-    /@media \(max-width: 680px\)[\s\S]*\.origins-binder-hero \{[^}]*width: 176px;[^}]*opacity: \.18;/,
+    /@media \(max-width: 680px\)[\s\S]*\.origins-binder-hero \{[^}]*width: 214px;[^}]*opacity: \.54;/,
   );
   assert.match(
     css,
-    /@media \(max-width: 680px\)[\s\S]*\.featured-hero-card \{[^}]*width: 154px;[^}]*opacity: \.21;/,
+    /@media \(max-width: 680px\)[\s\S]*\.featured-hero-card \{[^}]*width: 188px;[^}]*opacity: \.58;/,
   );
+  assert.match(component, /onClick=\{\(\) => setHeroPreview\(card\)\}/);
+  assert.match(component, /onClick=\{\(\) => setHeroPreview\(featuredHeroCard\)\}/);
+  assert.match(component, /function HeroCardDialog/);
 });
 
 test("keeps the soft set glow without a circular outline behind featured cards", () => {
