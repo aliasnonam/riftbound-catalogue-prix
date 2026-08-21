@@ -932,30 +932,38 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
           {payload ? (
             <div className="stat-strip" aria-label="Résumé du set">
               <div>
-                <span>Cartes</span>
-                <strong>{payload.stats.cards}</strong>
+                <div className="stat-main">
+                  <span>Cartes</span>
+                  <strong>{payload.stats.cards}</strong>
+                </div>
+              </div>
+              <div className="stat-total-cell">
+                <div className="stat-main">
+                  <span>Total collection</span>
+                  <strong>{payload.stats.products}</strong>
+                </div>
+                <small>
+                  ({payload.stats.cards} + {payload.stats.alternatives} a +{" "}
+                  {payload.stats.signatures} *)
+                </small>
               </div>
               <div>
-                <span>Total collection</span>
-                <div className="stat-total">
-                  <strong>{payload.stats.products}</strong>
-                  <small>
-                    ({payload.stats.cards} + {payload.stats.alternatives} a +{" "}
-                    {payload.stats.signatures} *)
-                  </small>
+                <div className="stat-main">
+                  <span>Alternatives</span>
+                  <strong>{payload.stats.alternatives}</strong>
                 </div>
               </div>
               <div>
-                <span>Alternatives</span>
-                <strong>{payload.stats.alternatives}</strong>
+                <div className="stat-main">
+                  <span>Outnumbered</span>
+                  <strong>{payload.stats.overnumbered}</strong>
+                </div>
               </div>
               <div>
-                <span>Outnumbered</span>
-                <strong>{payload.stats.overnumbered}</strong>
-              </div>
-              <div>
-                <span>Signées</span>
-                <strong>{payload.stats.signatures}</strong>
+                <div className="stat-main">
+                  <span>Signées</span>
+                  <strong>{payload.stats.signatures}</strong>
+                </div>
               </div>
             </div>
           ) : null}
