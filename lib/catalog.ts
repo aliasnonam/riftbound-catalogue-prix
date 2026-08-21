@@ -124,6 +124,7 @@ export type CatalogPayload = {
   >;
   pricesUpdatedAt: string;
   productsUpdatedAt: string;
+  refreshAvailableAt: string | null;
   sourceStatus: "live" | "snapshot";
   rows: CatalogRow[];
   stats: {
@@ -804,6 +805,7 @@ export function buildCatalog(args: {
   prices: PriceGuide[];
   pricesUpdatedAt: string;
   productsUpdatedAt: string;
+  refreshAvailableAt: string | null;
   sourceStatus: "live" | "snapshot";
 }): CatalogPayload {
   const { set } = args;
@@ -1153,6 +1155,7 @@ export function buildCatalog(args: {
     },
     pricesUpdatedAt: args.pricesUpdatedAt,
     productsUpdatedAt: args.productsUpdatedAt,
+    refreshAvailableAt: args.refreshAvailableAt,
     sourceStatus: args.sourceStatus,
     rows,
     stats: {

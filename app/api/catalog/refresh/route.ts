@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import rawCards from "@/data/card-catalog.json";
 import { buildCatalog, type RawCard } from "@/lib/catalog";
-import { refreshMarketPrices } from "@/lib/market-data";
+import {
+  PriceRefreshCooldownError,
+  refreshMarketPrices,
+} from "@/lib/market-data";
 import { SET_BY_CODE, type SetCode } from "@/lib/sets";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +34,7 @@ export async function POST(request: Request) {
       prices: bundle.prices.priceGuides,
       pricesUpdatedAt: bundle.prices.createdAt,
       productsUpdatedAt: bundle.products.createdAt,
+      refreshAvailableAt: bundle.refreshAvailableAt,
       sourceStatus: bundle.sourceStatus,
     });
 
@@ -43,6 +47,17 @@ export async function POST(request: Request) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    if (error instanceof PriceRefreshCooldownError) {
+      return NextResponse.json(
+        {
+          error: "Réessayer plus tard",
+          pricesUpdatedAt: error.lastSuccessfulAt,
+          refreshAvailableAt: error.refreshAvailableAt,
+        },
+        { status: 429, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     console.error("Cardmarket price refresh failed", error);
     return NextResponse.json(
       { error: "Le Price Guide Cardmarket n’a pas pu être actualisé." },

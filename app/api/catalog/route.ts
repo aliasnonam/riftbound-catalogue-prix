@@ -33,6 +33,7 @@ export async function GET(request: Request) {
     prices: bundle.prices.priceGuides,
     pricesUpdatedAt: bundle.prices.createdAt,
     productsUpdatedAt: bundle.products.createdAt,
+    refreshAvailableAt: bundle.refreshAvailableAt,
     sourceStatus: bundle.sourceStatus,
   });
 

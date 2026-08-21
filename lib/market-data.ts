@@ -10,6 +10,10 @@ import {
   preparePriceRefresh,
   type PriceExport,
 } from "@/lib/cardmarket-refresh";
+import {
+  getRefreshAvailableAt,
+  isRefreshCooldownActive,
+} from "@/lib/cardmarket-cooldown";
 import type { MarketProduct, PriceGuide } from "@/lib/catalog";
 
 const CACHE_KEY = "riftbound";
@@ -33,8 +37,19 @@ type PriceCache = {
 export type MarketBundle = {
   products: ProductExport;
   prices: PriceExport;
+  refreshAvailableAt: string | null;
   sourceStatus: "live" | "snapshot";
 };
+
+export class PriceRefreshCooldownError extends Error {
+  constructor(
+    readonly lastSuccessfulAt: string,
+    readonly refreshAvailableAt: string,
+  ) {
+    super("Réessayer plus tard");
+    this.name = "PriceRefreshCooldownError";
+  }
+}
 
 const bundledProducts = snapshotProducts as ProductExport;
 const bundledPrices = snapshotPrices as PriceExport;
@@ -90,6 +105,7 @@ function bundleFromCache(cache: PriceCache): MarketBundle {
       createdAt: cache.syncedAt,
       priceGuides: cache.prices,
     },
+    refreshAvailableAt: getRefreshAvailableAt(cache.syncedAt),
     sourceStatus: "live",
   };
 }
@@ -98,6 +114,7 @@ function snapshotBundle(): MarketBundle {
   return {
     products: bundledProducts,
     prices: bundledPrices,
+    refreshAvailableAt: null,
     sourceStatus: "snapshot",
   };
 }
@@ -125,6 +142,20 @@ async function fetchLatestPriceGuide() {
 
 export async function refreshMarketPrices() {
   const storedCache = await readPriceCache();
+  const refreshAvailableAt = getRefreshAvailableAt(
+    storedCache?.syncedAt ?? null,
+  );
+  if (
+    storedCache &&
+    refreshAvailableAt &&
+    isRefreshCooldownActive(refreshAvailableAt)
+  ) {
+    throw new PriceRefreshCooldownError(
+      storedCache.syncedAt,
+      refreshAvailableAt,
+    );
+  }
+
   const currentPrices = storedCache?.prices ?? bundledPrices.priceGuides;
   const currentSourceCreatedAt =
     storedCache?.sourceCreatedAt ?? bundledPrices.createdAt;

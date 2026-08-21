@@ -18,6 +18,7 @@ import type {
   VariantKind,
 } from "@/lib/catalog";
 import { formatCardmarketSyncDate } from "@/lib/cardmarket-date";
+import { isRefreshCooldownActive } from "@/lib/cardmarket-cooldown";
 import {
   FILTERS_BY_SET,
   getDescriptiveBadges,
@@ -45,6 +46,12 @@ type CatalogRefreshResponse = {
   payload: CatalogPayload;
   refreshStatus: "updated" | "unchanged";
   updatedProducts: number;
+};
+
+type CatalogCooldownResponse = {
+  error: "Réessayer plus tard";
+  pricesUpdatedAt: string;
+  refreshAvailableAt: string;
 };
 
 const PAGE_SIZE = 50;
@@ -519,6 +526,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [refreshState, setRefreshState] = useState<RefreshState>("idle");
+  const [cooldownClock, setCooldownClock] = useState(() => Date.now());
   const refreshResetTimerRef = useRef<number | null>(null);
   const availableFilters = FILTERS_BY_SET[setCode];
   const activeFilterKind = availableFilters.some(
@@ -563,6 +571,21 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
         method: "POST",
         cache: "no-store",
       });
+      if (response.status === 429) {
+        const result = (await response.json()) as CatalogCooldownResponse;
+        setPayload((current) =>
+          current
+            ? {
+                ...current,
+                pricesUpdatedAt: result.pricesUpdatedAt,
+                refreshAvailableAt: result.refreshAvailableAt,
+              }
+            : current,
+        );
+        setCooldownClock(Date.now());
+        setRefreshState("idle");
+        return;
+      }
       if (!response.ok) throw new Error("Cardmarket refresh failed");
       const result = (await response.json()) as CatalogRefreshResponse;
       setPayload(result.payload);
@@ -580,6 +603,27 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       }, 4000);
     }
   }, [setCode]);
+
+  useEffect(() => {
+    const syncTimer = window.setTimeout(() => {
+      setCooldownClock(Date.now());
+    }, 0);
+    const availableTime = payload?.refreshAvailableAt
+      ? Date.parse(payload.refreshAvailableAt)
+      : Number.NaN;
+    const remaining = availableTime - Date.now();
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      return () => window.clearTimeout(syncTimer);
+    }
+
+    const expiryTimer = window.setTimeout(() => {
+      setCooldownClock(Date.now());
+    }, remaining + 50);
+    return () => {
+      window.clearTimeout(syncTimer);
+      window.clearTimeout(expiryTimer);
+    };
+  }, [payload?.refreshAvailableAt]);
 
   useEffect(() => {
     let active = true;
@@ -687,6 +731,10 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const visibleRows = filteredRows.slice(0, visibleCount);
   const remainingCount = Math.max(0, filteredRows.length - visibleRows.length);
   const nextBatchCount = Math.min(PAGE_SIZE, remainingCount);
+  const refreshBlocked = isRefreshCooldownActive(
+    payload?.refreshAvailableAt ?? null,
+    cooldownClock,
+  );
   const style = {
     "--set-accent": set.accent,
     "--set-accent-soft": set.accentSoft,
@@ -771,9 +819,9 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                   <span>{formatCardmarketSyncDate(payload.pricesUpdatedAt)}</span>
                 </div>
                 <button
-                  className={`refresh-button is-${refreshState}`}
+                  className={`refresh-button is-${refreshState}${refreshBlocked ? " is-cooldown" : ""}`}
                   type="button"
-                  disabled={refreshState === "loading"}
+                  disabled={refreshState === "loading" || refreshBlocked}
                   aria-live="polite"
                   onClick={() => void refreshCatalog()}
                 >
@@ -783,7 +831,9 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                       ? "À jour ✓"
                       : refreshState === "error"
                         ? "Échec de l’actualisation"
-                        : "Actualiser"}
+                        : refreshBlocked
+                          ? "Réessayer plus tard"
+                          : "Actualiser"}
                 </button>
               </div>
             ) : null}
