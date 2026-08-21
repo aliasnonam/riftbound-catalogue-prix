@@ -8,12 +8,12 @@ const component = readFileSync(
 );
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 
-test("replaces only the Vendetta sigil with the Vi and Jinx Rival diptych", () => {
+test("keeps the Vendetta Vi and Jinx Rival diptych in the hero", () => {
   assert.match(component, /setCode === "VEN"[\s\S]*rival-hero-cards/);
   assert.match(component, /Vi, Destructive/);
   assert.match(component, /Jinx, Demolitionist/);
   assert.match(component, /Diptyque Rival Overnumbered : Vi face à Jinx/);
-  assert.match(component, /setCode === "VEN"[\s\S]*hero-sigil/);
+  assert.match(component, /set-hero--rivals/);
 });
 
 test("keeps the Vendetta Rival diptych compact and faded on mobile", () => {

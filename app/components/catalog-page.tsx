@@ -69,6 +69,82 @@ const VENDETTA_RIVAL_CARDS = {
   },
 } as const;
 
+const FEATURED_HERO_CARDS: Partial<
+  Record<SetCode, { name: string; imageUrl: string }>
+> = {
+  SFD: {
+    name: "Ahri, Inquisitive — signée",
+    imageUrl: "/hero/sfd-ahri-signed.webp",
+  },
+  UNL: {
+    name: "Baron Nashor",
+    imageUrl: "/hero/unl-baron-nashor.webp",
+  },
+};
+
+const ORIGINS_SIGNED_HERO_CARDS = [
+  {
+    number: "299*",
+    name: "Kai’Sa — Daughter of the Void",
+    imageUrl: "/hero/ogn-299-signed.webp",
+  },
+  {
+    number: "300*",
+    name: "Volibear — Relentless Storm",
+    imageUrl: "/hero/ogn-300-signed.webp",
+  },
+  {
+    number: "301*",
+    name: "Jinx — Loose Cannon",
+    imageUrl: "/hero/ogn-301-signed.webp",
+  },
+  {
+    number: "302*",
+    name: "Darius — Hand of Noxus",
+    imageUrl: "/hero/ogn-302-signed.webp",
+  },
+  {
+    number: "303*",
+    name: "Ahri — Nine-Tailed Fox",
+    imageUrl: "/hero/ogn-303-signed.webp",
+  },
+  {
+    number: "304*",
+    name: "Lee Sin — Blind Monk",
+    imageUrl: "/hero/ogn-304-signed.webp",
+  },
+  {
+    number: "305*",
+    name: "Yasuo — Unforgiven",
+    imageUrl: "/hero/ogn-305-signed.webp",
+  },
+  {
+    number: "306*",
+    name: "Leona — Radiant Dawn",
+    imageUrl: "/hero/ogn-306-signed.webp",
+  },
+  {
+    number: "307*",
+    name: "Teemo — Swift Scout",
+    imageUrl: "/hero/ogn-307-signed.webp",
+  },
+  {
+    number: "308*",
+    name: "Viktor — Herald of the Arcane",
+    imageUrl: "/hero/ogn-308-signed.webp",
+  },
+  {
+    number: "309*",
+    name: "Miss Fortune — Bounty Hunter",
+    imageUrl: "/hero/ogn-309-signed.webp",
+  },
+  {
+    number: "310*",
+    name: "Sett — The Boss",
+    imageUrl: "/hero/ogn-310-signed.webp",
+  },
+] as const;
+
 const EURO = new Intl.NumberFormat("fr-FR", {
   style: "currency",
   currency: "EUR",
@@ -802,6 +878,20 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     "--set-accent": set.accent,
     "--set-accent-soft": set.accentSoft,
   } as CSSProperties;
+  const featuredHeroCard = FEATURED_HERO_CARDS[setCode];
+  const heroClassName = [
+    "set-hero",
+    `set-hero--${setCode.toLowerCase()}`,
+    setCode === "VEN"
+      ? "set-hero--rivals"
+      : setCode === "OGN"
+        ? "set-hero--binder"
+        : featuredHeroCard
+          ? "set-hero--featured-card"
+          : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   function toggleExpanded(id: string) {
     setExpanded((current) => {
@@ -864,7 +954,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       </header>
 
       <main>
-        <section className={`set-hero${setCode === "VEN" ? " set-hero--rivals" : ""}`}>
+        <section className={heroClassName}>
           <div className="hero-grid" aria-hidden="true" />
           <div className="hero-copy">
             <p className="eyebrow">
@@ -895,6 +985,39 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 <img
                   src={VENDETTA_RIVAL_CARDS.jinx.imageUrl}
                   alt={`Carte ${VENDETTA_RIVAL_CARDS.jinx.name}`}
+                  decoding="async"
+                />
+              </span>
+            </figure>
+          ) : setCode === "OGN" ? (
+            <figure
+              className="origins-binder-hero"
+              aria-label="Planche de collection des 12 cartes signées Outnumbered d’Origins, de 299 à 310"
+            >
+              <div className="origins-binder-grid">
+                {ORIGINS_SIGNED_HERO_CARDS.map((card) => (
+                  <span className="origins-binder-slot" key={card.number}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={card.imageUrl}
+                      alt={`Carte ${card.number} ${card.name}`}
+                      decoding="async"
+                    />
+                    <small>{card.number}</small>
+                  </span>
+                ))}
+              </div>
+            </figure>
+          ) : featuredHeroCard ? (
+            <figure
+              className={`featured-hero-card featured-hero-card--${setCode.toLowerCase()}`}
+              aria-label={`Carte mise en avant : ${featuredHeroCard.name}`}
+            >
+              <span className="featured-hero-card-frame">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={featuredHeroCard.imageUrl}
+                  alt={`Carte ${featuredHeroCard.name}`}
                   decoding="async"
                 />
               </span>
