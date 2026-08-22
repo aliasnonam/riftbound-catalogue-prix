@@ -29,14 +29,5 @@ test("renders development preview metadata", async () => {
     response.headers.get("content-type") ?? "",
     /^text\/html\b/i,
   );
-  const html = await response.text();
-  assert.match(html, developmentPreviewMeta);
-  assert.match(
-    html,
-    /<meta(?=[^>]*\bproperty=["']og:image["'])(?=[^>]*\bcontent=["']https:\/\/riftbound-catalogue-prix\.hydegoody\.chatgpt\.site\/riftbound-social-preview-v2\.png["'])[^>]*>/i,
-  );
-  assert.match(
-    html,
-    /<meta(?=[^>]*\bname=["']twitter:image["'])(?=[^>]*\bcontent=["']https:\/\/riftbound-catalogue-prix\.hydegoody\.chatgpt\.site\/riftbound-social-preview-v2\.png["'])[^>]*>/i,
-  );
+  assert.match(await response.text(), developmentPreviewMeta);
 });

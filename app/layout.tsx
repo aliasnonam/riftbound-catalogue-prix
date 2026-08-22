@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const socialPreviewUrl =
+  "https://riftbound-catalogue-prix.hydegoody.chatgpt.site/riftbound-social-preview-v2.png";
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://riftbound-catalogue-prix.hydegoody.chatgpt.site"),
   title: {
@@ -16,7 +19,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/riftbound-social-preview-v2.png",
+        url: socialPreviewUrl,
         width: 1672,
         height: 941,
         alt: "Riftbound — Catalogue & Prix · Vi et Jinx",
@@ -28,7 +31,7 @@ export const metadata: Metadata = {
     title: "Riftbound — Catalogue & Prix",
     description:
       "Les cartes des quatre premiers sets et leurs prix Cardmarket.",
-    images: ["/riftbound-social-preview-v2.png"],
+    images: [socialPreviewUrl],
   },
   icons: {
     icon: "/favicon.svg",
