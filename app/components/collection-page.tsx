@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { SiteHeader } from "@/app/components/site-header";
+import { CustomSelect } from "@/app/components/ui/custom-select";
 import type { CatalogPayload, CatalogVariant, VariantKind } from "@/lib/catalog";
 import {
   collectionBackupFilename,
@@ -24,6 +25,7 @@ import { useCollection } from "@/hooks/use-collection";
 export type CollectionView = "home" | "missing" | "owned" | "manage";
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
 type DisplayStatus = "owned" | "missing" | "unknown";
+type CollectionExclusion = "signature" | "overnumbered" | "alternate" | "Epic" | "Showcase";
 
 const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
 const RARITIES = ["Common", "Uncommon", "Rare", "Epic", "Showcase", "Ultimate", "Special"];
@@ -66,16 +68,38 @@ function ManageStatusActions({ impression, status }: { impression: CollectionImp
   </div>;
 }
 
-function Filters({ focusSetCode, setFilter, onSetFilter, rarity, onRarity, kind, onKind, sort, onSort, priceMode, onPriceMode }: {
-  focusSetCode?: SetCode; setFilter: "all" | SetCode; onSetFilter: (value: "all" | SetCode) => void; rarity: string; onRarity: (value: string) => void; kind: "all" | VariantKind; onKind: (value: "all" | VariantKind) => void; sort: SortMode; onSort: (value: SortMode) => void; priceMode: PriceMode; onPriceMode: (value: PriceMode) => void;
+function Filters({ focusSetCode, setFilter, onSetFilter, rarity, onRarity, kind, onKind, sort, onSort, priceMode, onPriceMode, exclusions, onToggleExclusion, onClearExclusions }: {
+  focusSetCode?: SetCode; setFilter: "all" | SetCode; onSetFilter: (value: "all" | SetCode) => void; rarity: string; onRarity: (value: string) => void; kind: "all" | VariantKind; onKind: (value: "all" | VariantKind) => void; sort: SortMode; onSort: (value: SortMode) => void; priceMode: PriceMode; onPriceMode: (value: PriceMode) => void; exclusions: ReadonlySet<CollectionExclusion>; onToggleExclusion: (value: CollectionExclusion) => void; onClearExclusions: () => void;
 }) {
-  return <div className={`collection-filters${focusSetCode ? " is-focused" : ""}`}>
-    {!focusSetCode ? <label><span>Set</span><select value={setFilter} onChange={(event) => onSetFilter(event.target.value as "all" | SetCode)}><option value="all">Tous les sets</option>{SETS.map((set) => <option value={set.code} key={set.code}>{set.name}</option>)}</select></label> : null}
-    <label><span>Rareté</span><select value={rarity} onChange={(event) => onRarity(event.target.value)}><option value="all">Toutes</option>{RARITIES.map((item) => <option value={item} key={item}>{RARITY_LABELS[item]}</option>)}</select></label>
-    <label><span>Impression</span><select value={kind} onChange={(event) => onKind(event.target.value as "all" | VariantKind)}><option value="all">Toutes</option>{(Object.keys(KIND_LABELS) as VariantKind[]).map((item) => <option value={item} key={item}>{KIND_LABELS[item]}</option>)}</select></label>
-    <label><span>Trier</span><select value={sort} onChange={(event) => onSort(event.target.value as SortMode)}><option value="number">Numéro</option><option value="name">Nom A–Z</option><option value="price-desc">Prix le plus élevé</option><option value="price-asc">Prix le plus bas</option></select></label>
-    <label><span>Valeur affichée</span><select value={priceMode} onChange={(event) => onPriceMode(event.target.value as PriceMode)}><option value="low">Prix minimum</option><option value="trend">Tendance Cardmarket</option><option value="avg30">Moyenne 30 jours</option></select></label>
-  </div>;
+  const premiumExclusions: CollectionExclusion[] = ["signature", "overnumbered", "alternate"];
+  const premiumActive = premiumExclusions.every((exclusion) => exclusions.has(exclusion));
+  const togglePremium = () => {
+    premiumExclusions.forEach((exclusion) => {
+      if (premiumActive || !exclusions.has(exclusion)) onToggleExclusion(exclusion);
+    });
+  };
+  const exclusionOptions: { value: CollectionExclusion; label: string }[] = [
+    { value: "signature", label: "Signées" },
+    { value: "overnumbered", label: "Outnumbered" },
+    { value: "alternate", label: "Alternatives" },
+    { value: "Epic", label: "Épiques" },
+    { value: "Showcase", label: "Showcase" },
+  ];
+  return <>
+    <div className={`collection-filters${focusSetCode ? " is-focused" : ""}`}>
+      {!focusSetCode ? <CustomSelect className="collection-select" label="Set" value={setFilter} onChange={(value) => onSetFilter(value as "all" | SetCode)} options={[{ value: "all", label: "Tous les sets" }, ...SETS.map((set) => ({ value: set.code, label: set.name }))]} /> : null}
+      <CustomSelect className="collection-select" label="Rareté" value={rarity} onChange={onRarity} options={[{ value: "all", label: "Toutes" }, ...RARITIES.map((item) => ({ value: item, label: RARITY_LABELS[item] }))]} />
+      <CustomSelect className="collection-select" label="Impression" value={kind} onChange={(value) => onKind(value as "all" | VariantKind)} options={[{ value: "all", label: "Toutes" }, ...(Object.keys(KIND_LABELS) as VariantKind[]).map((item) => ({ value: item, label: KIND_LABELS[item] }))]} />
+      <CustomSelect className="collection-select" label="Trier" value={sort} onChange={(value) => onSort(value as SortMode)} options={[{ value: "number", label: "Numéro" }, { value: "name", label: "Nom A–Z" }, { value: "price-desc", label: "Prix le plus élevé" }, { value: "price-asc", label: "Prix le plus bas" }]} />
+      <CustomSelect className="collection-select" label="Valeur affichée" value={priceMode} onChange={(value) => onPriceMode(value as PriceMode)} options={[{ value: "low", label: "Prix minimum" }, { value: "trend", label: "Tendance Cardmarket" }, { value: "avg30", label: "Moyenne 30 jours" }]} />
+    </div>
+    <div className="collection-exclusions" aria-label="Exclure des impressions">
+      <span>Exclure</span>
+      <button type="button" className={premiumActive ? "is-active" : ""} onClick={togglePremium} aria-pressed={premiumActive}>Sans variantes premium</button>
+      {exclusionOptions.map((option) => <button type="button" key={option.value} className={exclusions.has(option.value) ? "is-active" : ""} onClick={() => onToggleExclusion(option.value)} aria-pressed={exclusions.has(option.value)}>{exclusions.has(option.value) ? "✕ " : ""}{option.label}</button>)}
+      {exclusions.size ? <button type="button" className="collection-exclusions-reset" onClick={onClearExclusions}>Réinitialiser</button> : null}
+    </div>
+  </>;
 }
 
 function ImpressionCard({ impression, priceMode, editable, onPreview }: { impression: CollectionImpression; priceMode: PriceMode; editable: boolean; onPreview: () => void }) {
@@ -212,6 +236,7 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
   const [kind, setKind] = useState<"all" | VariantKind>("all");
   const [sort, setSort] = useState<SortMode>("number");
   const [priceMode, setPriceMode] = useState<PriceMode>("low");
+  const [exclusions, setExclusions] = useState<Set<CollectionExclusion>>(() => new Set());
   const [preview, setPreview] = useState<CollectionImpression | null>(null);
   const targetStatus = view === "manage" ? null : view;
   const focusedSet = focusSetCode ? SETS.find((set) => set.code === focusSetCode) : undefined;
@@ -223,13 +248,15 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
       if (!focusSetCode && setFilter !== "all" && impression.setCode !== setFilter) return false;
       if (rarity !== "all" && impression.variant.rarity !== rarity) return false;
       if (kind !== "all" && impression.variant.kind !== kind) return false;
+      if (exclusions.has(impression.variant.kind as CollectionExclusion)) return false;
+      if (exclusions.has(impression.variant.rarity as CollectionExclusion)) return false;
       return !normalized || [impression.variant.name, impression.variant.number, impression.setName, impression.setCode, ...impression.row.domains].join(" ").toLocaleLowerCase("fr").includes(normalized);
     }).sort((a, b) => {
       if (sort === "name") return a.variant.name.localeCompare(b.variant.name, "fr");
       if (sort === "price-desc" || sort === "price-asc") { const aPrice = getCollectionPrice(a, priceMode); const bPrice = getCollectionPrice(b, priceMode); if (aPrice === null) return 1; if (bPrice === null) return -1; return sort === "price-desc" ? bPrice - aPrice : aPrice - bPrice; }
       return a.row.sortOrder - b.row.sortOrder || a.variant.number.localeCompare(b.variant.number, "fr");
     });
-  }, [collection, focusSetCode, kind, priceMode, query, rarity, scoped, setFilter, sort, targetStatus]);
+  }, [collection, exclusions, focusSetCode, kind, priceMode, query, rarity, scoped, setFilter, sort, targetStatus]);
   const title = view === "missing" ? "Cartes manquantes" : view === "owned" ? "Cartes possédées" : "Gérer mes cartes";
   const description = view === "missing" ? "Les impressions qu’il reste à ajouter à ta collection." : view === "owned" ? "Les impressions déjà classées dans ta collection." : "Ajoute, modifie ou retire le statut de chaque impression.";
   return <main className="collection-shell">
@@ -237,7 +264,7 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
     <div className="collection-heading"><div><p className="eyebrow" style={focusedSet ? { color: focusedSet.accent } : undefined}>{focusedSet ? `Ma collection · ${focusedSet.name}` : "Ma collection"}</p><h1>{title}</h1><p>{description}</p></div><div className="collection-count"><strong>{filtered.length}</strong><span>impression{filtered.length > 1 ? "s" : ""} affichée{filtered.length > 1 ? "s" : ""}</span></div></div>
     <nav className="collection-subnav" aria-label="Sections de ma collection"><Link href={collectionHref("missing", focusSetCode)} aria-current={view === "missing" ? "page" : undefined}>Cartes manquantes</Link><Link href={collectionHref("owned", focusSetCode)} aria-current={view === "owned" ? "page" : undefined}>Cartes possédées</Link><Link href={collectionHref("manage", focusSetCode)} aria-current={view === "manage" ? "page" : undefined}>Gérer mes cartes</Link></nav>
     <label className="collection-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={focusedSet ? `Rechercher dans ${focusedSet.name}…` : "Rechercher une carte, un numéro, un set ou un domaine…"} /></label>
-    <Filters focusSetCode={focusSetCode} setFilter={setFilter} onSetFilter={setSetFilter} rarity={rarity} onRarity={setRarity} kind={kind} onKind={setKind} sort={sort} onSort={setSort} priceMode={priceMode} onPriceMode={setPriceMode} />
+    <Filters focusSetCode={focusSetCode} setFilter={setFilter} onSetFilter={setSetFilter} rarity={rarity} onRarity={setRarity} kind={kind} onKind={setKind} sort={sort} onSort={setSort} priceMode={priceMode} onPriceMode={setPriceMode} exclusions={exclusions} onToggleExclusion={(value) => setExclusions((current) => { const next = new Set(current); if (next.has(value)) next.delete(value); else next.add(value); return next; })} onClearExclusions={() => setExclusions(new Set())} />
     <div className="collection-results"><strong>{filtered.length}</strong> impression{filtered.length > 1 ? "s" : ""}</div>
     {filtered.length ? <div className="collection-grid">{filtered.map((impression) => <ImpressionCard key={impression.impressionId} impression={impression} priceMode={priceMode} editable={view === "manage"} onPreview={() => setPreview(impression)} />)}</div> : <div className="collection-empty"><span>◇</span><h2>{view === "manage" ? "Aucune carte ne correspond." : "Aucune impression dans cette liste."}</h2><p>{view === "manage" ? "Essaie avec une autre recherche ou un autre filtre." : "Gère tes cartes pour ajouter ou modifier un statut."}</p></div>}
     {preview ? <CollectionCardDialog impression={preview} onClose={() => setPreview(null)} /> : null}

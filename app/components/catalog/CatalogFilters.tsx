@@ -5,6 +5,8 @@ import type { RefObject } from "react";
 import type { FilterDefinition, FilterKind } from "@/lib/catalog-presentation";
 import type { PriceMode } from "@/lib/pricing";
 
+import { CustomSelect } from "@/app/components/ui/custom-select";
+
 import { rarityLabel } from "./catalog-utils";
 
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
@@ -51,47 +53,9 @@ export function CatalogFilters({
             placeholder="Nom, numéro, domaine…"
           />
         </label>
-        <label className="select-field">
-          <span>Rareté</span>
-          <select
-            value={rarity}
-            onChange={(event) => onRarityChange(event.target.value)}
-          >
-            <option value="all">Toutes</option>
-            {rarities.map((item) => (
-              <option value={item} key={item}>
-                {rarityLabel(item)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="select-field">
-          <span>Trier</span>
-          <select
-            value={sortMode}
-            onChange={(event) =>
-              onSortModeChange(event.target.value as SortMode)
-            }
-          >
-            <option value="number">Numéro croissant</option>
-            <option value="name">Nom A–Z</option>
-            <option value="price-desc">Prix le plus élevé</option>
-            <option value="price-asc">Prix le plus bas</option>
-          </select>
-        </label>
-        <label className="select-field price-mode-field">
-          <span>Valeur affichée</span>
-          <select
-            value={priceMode}
-            onChange={(event) =>
-              onPriceModeChange(event.target.value as PriceMode)
-            }
-          >
-            <option value="low">Prix minimum</option>
-            <option value="trend">Tendance Cardmarket</option>
-            <option value="avg30">Moyenne 30 jours</option>
-          </select>
-        </label>
+        <CustomSelect className="select-field" label="Rareté" value={rarity} onChange={onRarityChange} options={[{ value: "all", label: "Toutes" }, ...rarities.map((item) => ({ value: item, label: rarityLabel(item) }))]} />
+        <CustomSelect className="select-field" label="Trier" value={sortMode} onChange={(value) => onSortModeChange(value as SortMode)} options={[{ value: "number", label: "Numéro croissant" }, { value: "name", label: "Nom A–Z" }, { value: "price-desc", label: "Prix le plus élevé" }, { value: "price-asc", label: "Prix le plus bas" }]} />
+        <CustomSelect className="select-field price-mode-field" label="Valeur affichée" value={priceMode} onChange={(value) => onPriceModeChange(value as PriceMode)} options={[{ value: "low", label: "Prix minimum" }, { value: "trend", label: "Tendance Cardmarket" }, { value: "avg30", label: "Moyenne 30 jours" }]} />
       </div>
       <div className="filter-tabs-wrap">
         <div
