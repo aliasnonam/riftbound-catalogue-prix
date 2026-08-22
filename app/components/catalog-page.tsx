@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { createPortal } from "react-dom";
 import {
   useCallback,
@@ -34,11 +33,12 @@ import {
   type PriceMode,
 } from "@/lib/pricing";
 import {
-  getSetHref,
   SET_BY_CODE,
-  SETS,
   type SetCode,
 } from "@/lib/sets";
+import { getCollectionImpressionId } from "@/lib/collection";
+import { useCollection } from "@/hooks/use-collection";
+import { SiteHeader } from "@/app/components/site-header";
 
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
 type RefreshState = "idle" | "loading" | "success" | "error";
@@ -1053,7 +1053,8 @@ function PriceCell({
   );
 }
 
-function VariantDetails({ row, mode }: { row: CatalogRow; mode: PriceMode }) {
+function VariantDetails({ row, mode, setCode }: { row: CatalogRow; mode: PriceMode; setCode: SetCode }) {
+  const collection = useCollection();
   return (
     <div className="variant-panel">
       <div className="variant-panel-heading">
@@ -1105,6 +1106,12 @@ function VariantDetails({ row, mode }: { row: CatalogRow; mode: PriceMode }) {
                   <b>{formatPrice(getPrimaryVariantPrice(variant, mode))}</b>
                 </div>
               )}
+              <div className="variant-collection-actions">
+                <span>Ma collection</span>
+                <button type="button" className={collection.getStatus(getCollectionImpressionId(setCode, variant.id)) === "owned" ? "is-owned" : ""} onClick={() => collection.setOwned(getCollectionImpressionId(setCode, variant.id))}>Possédée</button>
+                <button type="button" className={collection.getStatus(getCollectionImpressionId(setCode, variant.id)) === "missing" ? "is-missing" : ""} onClick={() => collection.setMissing(getCollectionImpressionId(setCode, variant.id))}>Manquante</button>
+                {collection.getStatus(getCollectionImpressionId(setCode, variant.id)) !== "unknown" ? <button type="button" className="is-clear" onClick={() => collection.clearStatus(getCollectionImpressionId(setCode, variant.id))}>Retirer</button> : null}
+              </div>
             </div>
           </article>
         ))}
@@ -1143,7 +1150,6 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [refreshState, setRefreshState] = useState<RefreshState>("idle");
   const [cooldownClock, setCooldownClock] = useState(() => Date.now());
-  const [setNavHints, setSetNavHints] = useState({ left: false, right: false });
   const [heroPreview, setHeroPreview] = useState<HeroPreviewCard | null>(null);
   const [originsGalleryIndex, setOriginsGalleryIndex] = useState<number | null>(
     null,
@@ -1151,7 +1157,6 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [rivalsGalleryOpen, setRivalsGalleryOpen] = useState(false);
   const refreshResetTimerRef = useRef<number | null>(null);
   const filterTabsRef = useRef<HTMLDivElement | null>(null);
-  const setNavRef = useRef<HTMLElement | null>(null);
   const availableFilters = FILTERS_BY_SET[setCode];
   const activeFilterKind = availableFilters.some(
     (filter) => filter.id === filterKind,
@@ -1296,42 +1301,6 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     setRivalsGalleryOpen(false);
   }, [setCode]);
 
-  useEffect(() => {
-    const nav = setNavRef.current;
-    if (!nav) return;
-
-    const updateScrollHints = () => {
-      const left = nav.scrollLeft > 4;
-      const right = nav.scrollWidth - nav.clientWidth - nav.scrollLeft > 4;
-      setSetNavHints((current) =>
-        current.left === left && current.right === right
-          ? current
-          : { left, right },
-      );
-    };
-
-    const frame = window.requestAnimationFrame(() => {
-      const activeSet = nav.querySelector<HTMLElement>('[aria-current="page"]');
-      if (activeSet) {
-        nav.scrollLeft = Math.max(
-          0,
-          activeSet.offsetLeft - (nav.clientWidth - activeSet.offsetWidth) / 2,
-        );
-      }
-      updateScrollHints();
-    });
-
-    nav.addEventListener("scroll", updateScrollHints, { passive: true });
-    const resizeObserver = new ResizeObserver(updateScrollHints);
-    resizeObserver.observe(nav);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      nav.removeEventListener("scroll", updateScrollHints);
-      resizeObserver.disconnect();
-    };
-  }, [setCode]);
-
   const rarities = useMemo(() => {
     if (!payload) return [];
     return [
@@ -1460,54 +1429,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
 
   return (
     <div className="site-shell" style={style}>
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Catalogue Riftbound">
-          <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" focusable="false">
-              <polygon points="16,3 27,9.5 16,16" opacity="0.58" />
-              <polygon points="27,9.5 27,22.5 16,16" opacity="0.9" />
-              <polygon points="27,22.5 16,29 16,16" opacity="0.68" />
-              <polygon points="16,29 5,22.5 16,16" opacity="1" />
-              <polygon points="5,22.5 5,9.5 16,16" opacity="0.72" />
-              <polygon points="5,9.5 16,3 16,16" opacity="0.86" />
-              <polygon
-                className="brand-hexagon-outline"
-                points="16,3 27,9.5 27,22.5 16,29 5,22.5 5,9.5"
-              />
-            </svg>
-          </span>
-          <span>
-            <strong>RIFTBOUND</strong>
-            <small>Catalogue & prix</small>
-          </span>
-        </Link>
-        <div className="set-nav-wrap">
-          <nav className="set-nav" ref={setNavRef} aria-label="Choisir un set">
-            {SETS.map((item) => (
-              <Link
-                href={getSetHref(item.code)}
-                key={item.code}
-                aria-current={item.code === setCode ? "page" : undefined}
-              >
-                <span>{String(item.number).padStart(2, "0")}</span>
-                {item.name}
-              </Link>
-            ))}
-          </nav>
-          <span
-            className={`set-nav-scroll-hint is-left${setNavHints.left ? " is-visible" : ""}`}
-            aria-hidden="true"
-          >
-            ‹
-          </span>
-          <span
-            className={`set-nav-scroll-hint is-right${setNavHints.right ? " is-visible" : ""}`}
-            aria-hidden="true"
-          >
-            ›
-          </span>
-        </div>
-      </header>
+      <SiteHeader activeSetCode={setCode} />
 
       <main>
         <section className={heroClassName}>
@@ -1904,7 +1826,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                           <span aria-hidden="true">⌄</span>
                         </button>
                       </div>
-                      {isOpen ? <VariantDetails row={row} mode={priceMode} /> : null}
+                      {isOpen ? <VariantDetails row={row} mode={priceMode} setCode={setCode} /> : null}
                     </article>
                   );
                 })}
