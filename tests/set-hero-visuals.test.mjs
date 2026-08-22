@@ -70,6 +70,13 @@ test("opens the Origins gallery on the selected card and supports continuous nav
   assert.match(component, /Carte \$\{index \+ 1\} sur \$\{ORIGINS_SIGNED_HERO_CARDS\.length\}/);
 });
 
+test("adds an Origins CTA that opens the existing signed gallery from Kai'Sa 299*", () => {
+  assert.match(component, /Voir les 12 Outnumbered signées/);
+  assert.match(component, /setOriginsGalleryIndex\(0\)/);
+  assert.match(component, /className="hero-gallery-cta"/);
+  assert.match(css, /\.hero-gallery-cta \{[\s\S]*border-radius: 999px;/);
+});
+
 test("keeps the soft set glow without a circular outline behind featured cards", () => {
   assert.match(
     css,

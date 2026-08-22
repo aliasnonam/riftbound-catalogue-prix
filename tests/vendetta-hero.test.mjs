@@ -61,4 +61,9 @@ test("ships all 11 Rival diptychs with arrows, counter and swipe navigation", ()
   assert.match(component, /index \+ 1/);
   assert.match(component, /RIVAL_DIPTYCHES\.length/);
   assert.match(component, /Ouvrir la fiche de \$\{card\.name\}/);
+  assert.match(component, /Afficher le diptyque \$\{itemIndex \+ 1\}/);
+  assert.match(component, /aria-current=\{itemIndex === index \? "true" : undefined\}/);
+  assert.match(component, /onClick=\{\(\) => setIndex\(itemIndex\)\}/);
+  assert.match(css, /\.rivals-gallery-progress button \{[\s\S]*cursor: pointer;/);
+  assert.match(css, /\.rivals-gallery-slide > img \{[\s\S]*transform: scale\(1\.028\);/);
 });

@@ -977,10 +977,17 @@ function RivalsGalleryDialog({
                   {diptych.cards[0].name} / {diptych.cards[1].name}
                 </span>
               </p>
-              <div className="rivals-gallery-progress" aria-hidden="true">
+              <div
+                className="rivals-gallery-progress"
+                aria-label={`Navigation entre les ${RIVAL_DIPTYCHES.length} diptyques Rivals`}
+              >
                 {RIVAL_DIPTYCHES.map((item, itemIndex) => (
-                  <span
+                  <button
                     className={itemIndex === index ? "is-active" : ""}
+                    type="button"
+                    aria-label={`Afficher le diptyque ${itemIndex + 1} : ${item.cards[0].name} / ${item.cards[1].name}`}
+                    aria-current={itemIndex === index ? "true" : undefined}
+                    onClick={() => setIndex(itemIndex)}
                     key={item.imageUrl}
                   />
                 ))}
@@ -1515,14 +1522,20 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
               <span>Sortie : {set.release}</span>
               <span>{set.baseSize} cartes dans le set numéroté</span>
             </div>
-            {setCode === "VEN" ? (
+            {setCode === "VEN" || setCode === "OGN" ? (
               <button
-                className="hero-rivals-cta"
+                className="hero-gallery-cta"
                 type="button"
                 aria-haspopup="dialog"
-                onClick={() => setRivalsGalleryOpen(true)}
+                onClick={() => {
+                  if (setCode === "VEN") setRivalsGalleryOpen(true);
+                  else setOriginsGalleryIndex(0);
+                }}
               >
-                Voir les 11 diptyques Rivals <span aria-hidden="true">→</span>
+                {setCode === "VEN"
+                  ? "Voir les 11 diptyques Rivals"
+                  : "Voir les 12 Outnumbered signées"} {" "}
+                <span aria-hidden="true">→</span>
               </button>
             ) : null}
           </div>
