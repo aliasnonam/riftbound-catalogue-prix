@@ -11,7 +11,7 @@ import {
 
 import type {
   CatalogPayload,
-  CatalogRow,
+  CatalogRow as CatalogRowData,
 } from "@/lib/catalog";
 import { formatCardmarketSyncDate } from "@/lib/cardmarket-date";
 import { isRefreshCooldownActive } from "@/lib/cardmarket-cooldown";
@@ -458,7 +458,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   }, [payload, setCode]);
 
   const filteredRows = (() => {
-    if (!payload) return [] as CatalogRow[];
+    if (!payload) return [] as CatalogRowData[];
     const normalizedQuery = query.trim().toLocaleLowerCase("fr");
     const rows = payload.rows.filter((row) => {
       const relevantVariants = variantsForFilter(row, activeFilterKind);

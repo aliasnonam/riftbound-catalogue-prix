@@ -118,7 +118,7 @@ function ImpressionCard({ impression, priceMode, editable, onPreview }: { impres
     </button>
     <footer className="collection-card-footer">
       <CollectionStatusBadge status={status} />
-      {editable ? <ManageStatusActions impression={impression} status={status} /> : <a className="collection-cardmarket-link" href={variant.cardmarketUrl} target="_blank" rel="noreferrer">{status === "missing" ? "Voir / acheter sur Cardmarket ↗" : "Voir sur Cardmarket ↗"}</a>}
+      {editable ? <ManageStatusActions impression={impression} status={status} /> : <a className="collection-cardmarket-link" href={row.cardmarketUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>{status === "missing" ? "Voir / acheter sur Cardmarket ↗" : "Voir sur Cardmarket ↗"}</a>}
     </footer>
   </article>;
 }
