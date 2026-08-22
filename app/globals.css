@@ -183,10 +183,11 @@ a { color: inherit; text-decoration: none; }
 .collection-filters span { color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }.collection-filters select { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 11px; font-weight: 700; }
 .collection-results { margin: 28px 0 14px; color: var(--muted); font-size: 12px; }.collection-results strong { color: var(--text); }
 .collection-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
-.collection-impression-card { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 14px; padding: 13px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.018); }
+.collection-impression-card { padding: 13px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.018); }
+.collection-impression-preview { display: grid; width: 100%; grid-template-columns: 76px minmax(0, 1fr); gap: 14px; padding: 0; border: 0; background: transparent; color: inherit; cursor: zoom-in; text-align: left; }.collection-impression-preview:focus-visible { border-radius: 10px; outline: 2px solid var(--set-accent); outline-offset: 4px; }.collection-impression-preview:hover .collection-impression-art { transform: translateY(-2px) scale(1.025); box-shadow: 0 12px 28px rgba(0,0,0,.3), 0 0 0 1px color-mix(in srgb, var(--set-accent) 42%, transparent); }.collection-impression-preview:hover .collection-impression-title { color: var(--set-accent); }.collection-impression-preview:disabled { cursor: default; }
 .collection-impression-art { display: grid; width: 76px; height: 108px; place-items: center; overflow: hidden; border-radius: 9px; background: var(--surface-raised); color: var(--set-accent); }.collection-impression-art img { width: 100%; height: 100%; object-fit: cover; }
-.collection-impression-copy { display: flex; min-width: 0; flex-direction: column; }.collection-impression-kicker { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }.collection-impression-kicker b { color: var(--set-accent); }.collection-impression-kicker em { color: var(--muted-strong); font-style: normal; }
-.collection-impression-copy h3 { margin: 7px 0 3px; overflow: hidden; font-family: Georgia, serif; font-size: 17px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }.collection-impression-copy > p { margin: 0; color: var(--muted); font-size: 10px; }
+.collection-impression-art { transition: transform 160ms ease, box-shadow 160ms ease; }.collection-impression-copy { display: flex; min-width: 0; flex-direction: column; }.collection-impression-kicker { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }.collection-impression-kicker b { color: var(--set-accent); }.collection-impression-kicker em { color: var(--muted-strong); font-style: normal; }
+.collection-impression-title { margin: 7px 0 3px; overflow: hidden; font-family: Georgia, serif; font-size: 17px; font-weight: 500; text-overflow: ellipsis; transition: color 160ms ease; white-space: nowrap; }.collection-impression-type { color: var(--muted); font-size: 10px; }
 .collection-impression-prices { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: auto; padding-top: 10px; color: var(--muted); font-size: 9px; }.collection-impression-prices b { display: block; margin-top: 2px; color: var(--text); font-size: 11px; }
 .collection-status-buttons, .collection-add-actions, .variant-collection-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }.collection-status-buttons button, .collection-add-actions button, .variant-collection-actions button { min-height: 25px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.025); color: var(--muted); font-size: 8px; font-weight: 800; }.collection-status-buttons button:hover, .collection-add-actions button:hover, .variant-collection-actions button:hover { border-color: var(--set-accent); color: var(--text); }.collection-status-buttons button.is-active.owned, .variant-collection-actions button.is-owned { border-color: rgba(99,214,159,.45); background: rgba(99,214,159,.12); color: #7ce2b4; }.collection-status-buttons button.is-active.missing, .variant-collection-actions button.is-missing { border-color: rgba(255,148,125,.48); background: rgba(255,148,125,.12); color: #ff9b87; }.collection-status-buttons button.clear, .variant-collection-actions button.is-clear { color: #a6adba; }
 .variant-collection-actions { align-items: center; }.variant-collection-actions > span { margin-right: 3px; color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
@@ -1322,8 +1323,6 @@ a { color: inherit; text-decoration: none; }
   max-height: calc(100dvh - 190px);
   object-fit: contain;
   pointer-events: none;
-  transform: scale(1.028);
-  transform-origin: center;
 }
 .rivals-gallery-card-hit {
   position: absolute;
@@ -1840,7 +1839,7 @@ a { color: inherit; text-decoration: none; }
   .collection-subnav { width: 100%; overflow-x: auto; padding-bottom: 5px; scrollbar-width: thin; }.collection-subnav a { flex: 0 0 auto; }
   .collection-mode-switch { width: 100%; }.collection-mode-switch button { flex: 1; padding: 0 9px; }
   .collection-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }.collection-filters label:last-child { grid-column: 1 / -1; }
-  .collection-grid { grid-template-columns: 1fr; }.collection-impression-card { grid-template-columns: 70px minmax(0, 1fr); }.collection-impression-art { width: 70px; height: 100px; }
+  .collection-grid { grid-template-columns: 1fr; }.collection-impression-preview { grid-template-columns: 70px minmax(0, 1fr); }.collection-impression-art { width: 70px; height: 100px; }
   .set-hero { min-height: 340px; padding: 58px 22px; }
   .set-hero h1 { font-size: clamp(55px, 18vw, 84px); }
   .hero-subtitle { max-width: 100%; margin-top: 20px; font-size: 15px; line-height: 1.55; text-wrap: pretty; }

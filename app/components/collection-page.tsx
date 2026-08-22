@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 
 import { SiteHeader } from "@/app/components/site-header";
@@ -65,20 +66,48 @@ function Filters({ setFilter, onSetFilter, rarity, onRarity, kind, onKind, sort,
   </div>;
 }
 
-function ImpressionCard({ impression, priceMode, showStatus = true, action }: { impression: CollectionImpression; priceMode: PriceMode; showStatus?: boolean; action?: ReactNode }) {
+function ImpressionCard({ impression, priceMode, showStatus = true, action, onPreview }: { impression: CollectionImpression; priceMode: PriceMode; showStatus?: boolean; action?: ReactNode; onPreview: () => void }) {
   const { variant, row, setName } = impression;
   return <article className="collection-impression-card">
-    <div className="collection-impression-art">{variant.imageUrl ? <img src={variant.imageUrl} alt={`Carte ${variant.name}`} loading="lazy" /> : <span>◇</span>}</div>
-    <div className="collection-impression-copy">
-      <div className="collection-impression-kicker"><span>{setName}</span><b>{variant.number}</b><em>{labelForVariant(variant)}</em></div>
-      <h3>{variant.name}</h3>
-      <p>{row.type}{row.domains.length ? ` · ${row.domains.join(" / ")}` : ""}</p>
-      <div className="collection-impression-prices">
-        {variant.pricing === "dual" ? <><span>Normal <b>{formatPrice(getVariantNormalPrice(variant, priceMode))}</b></span><span>Foil <b>{formatPrice(getVariantFoilPrice(variant, priceMode))}</b></span></> : <span>{labelForVariant(variant)} <b>{formatPrice(getCollectionPrice(impression, priceMode))}</b></span>}
-      </div>
-      {showStatus ? <CollectionStatusButtons impression={impression} compact /> : action}
-    </div>
+    <button className="collection-impression-preview" type="button" onClick={onPreview} disabled={!variant.imageUrl} aria-label={variant.imageUrl ? `Agrandir ${variant.name}` : undefined}>
+      <span className="collection-impression-art">{variant.imageUrl ? <img src={variant.imageUrl} alt={`Carte ${variant.name}`} loading="lazy" /> : <span>◇</span>}</span>
+      <span className="collection-impression-copy">
+        <span className="collection-impression-kicker"><span>{setName}</span><b>{variant.number}</b><em>{labelForVariant(variant)}</em></span>
+        <strong className="collection-impression-title">{variant.name}</strong>
+        <span className="collection-impression-type">{row.type}{row.domains.length ? ` · ${row.domains.join(" / ")}` : ""}</span>
+        <span className="collection-impression-prices">
+          {variant.pricing === "dual" ? <><span>Normal <b>{formatPrice(getVariantNormalPrice(variant, priceMode))}</b></span><span>Foil <b>{formatPrice(getVariantFoilPrice(variant, priceMode))}</b></span></> : <span>{labelForVariant(variant)} <b>{formatPrice(getCollectionPrice(impression, priceMode))}</b></span>}
+        </span>
+      </span>
+    </button>
+    {showStatus ? <CollectionStatusButtons impression={impression} compact /> : action}
   </article>;
+}
+
+function CollectionCardDialog({ impression, onClose }: { impression: CollectionImpression; onClose: () => void }) {
+  const { variant, row, setName } = impression;
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
+  if (!variant.imageUrl) return null;
+  return createPortal(
+    <div className="card-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="card-preview-dialog" role="dialog" aria-modal="true" aria-label={`${variant.name}, ${variant.number}`}>
+        <button className="card-preview-close" type="button" aria-label="Fermer l’aperçu" onClick={onClose}>×</button>
+        <img src={variant.imageUrl} alt={`Carte ${variant.name}`} />
+        <p>{setName} · {variant.number} · {labelForVariant(variant)} · {row.type}{row.domains.length ? ` · ${row.domains.join(" / ")}` : ""}</p>
+      </section>
+    </div>,
+    document.body,
+  );
 }
 
 function CollectionList({ view, impressions }: { view: Exclude<CollectionView, "home">; impressions: CollectionImpression[] }) {
@@ -90,6 +119,7 @@ function CollectionList({ view, impressions }: { view: Exclude<CollectionView, "
   const [kind, setKind] = useState<"all" | VariantKind>("all");
   const [sort, setSort] = useState<SortMode>("number");
   const [priceMode, setPriceMode] = useState<PriceMode>("low");
+  const [preview, setPreview] = useState<CollectionImpression | null>(null);
   const targetStatus = view;
 
   const filtered = useMemo(() => {
@@ -121,8 +151,9 @@ function CollectionList({ view, impressions }: { view: Exclude<CollectionView, "
     <div className="collection-results"><strong>{filtered.length}</strong> impression{filtered.length > 1 ? "s" : ""}</div>
     {filtered.length ? <div className="collection-grid">{filtered.map((impression) => {
       const alreadyInTarget = collection.getStatus(impression.impressionId) === targetStatus;
-      return <ImpressionCard key={impression.impressionId} impression={impression} priceMode={priceMode} showStatus={mode === "list"} action={mode === "add" ? <div className="collection-add-actions"><button type="button" className={alreadyInTarget ? "is-added" : ""} onClick={() => targetStatus === "owned" ? collection.setOwned(impression.impressionId) : collection.setMissing(impression.impressionId)}>{alreadyInTarget ? `Ajoutée aux ${actionLabel} ✓` : `+ Ajouter aux ${actionLabel}`}</button></div> : undefined} />;
+      return <ImpressionCard key={impression.impressionId} impression={impression} priceMode={priceMode} onPreview={() => setPreview(impression)} showStatus={mode === "list"} action={mode === "add" ? <div className="collection-add-actions"><button type="button" className={alreadyInTarget ? "is-added" : ""} onClick={() => targetStatus === "owned" ? collection.setOwned(impression.impressionId) : collection.setMissing(impression.impressionId)}>{alreadyInTarget ? `Ajoutée aux ${actionLabel} ✓` : `+ Ajouter aux ${actionLabel}`}</button></div> : undefined} />;
     })}</div> : <div className="collection-empty"><span>◇</span><h2>{mode === "list" ? "Aucune impression dans cette liste." : "Aucune carte ne correspond."}</h2><p>{mode === "list" ? "Passe en mode « Ajouter des cartes » pour commencer." : "Essaie avec une autre recherche ou un autre filtre."}</p></div>}
+    {preview ? <CollectionCardDialog impression={preview} onClose={() => setPreview(null)} /> : null}
   </main>;
 }
 

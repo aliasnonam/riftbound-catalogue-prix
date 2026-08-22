@@ -167,77 +167,77 @@ const ORIGINS_SIGNED_HERO_CARDS = [
 
 const RIVAL_DIPTYCHES: readonly RivalDiptych[] = [
   {
-    imageUrl: "/hero/rivals/01-vi-jinx.webp",
+    imageUrl: "/hero/rivals/01-vi-jinx.png",
     cards: [
       { number: 167, name: "Vi, Destructive" },
       { number: 168, name: "Jinx, Demolitionist" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/02-zed-shen.webp",
+    imageUrl: "/hero/rivals/02-zed-shen.png",
     cards: [
       { number: 169, name: "Zed, From the Shadows" },
       { number: 170, name: "Shen, Scourge of Shadows" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/03-riven-draven.webp",
+    imageUrl: "/hero/rivals/03-riven-draven.png",
     cards: [
       { number: 171, name: "Riven, Shattered" },
       { number: 172, name: "Draven, Showboat" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/04-swain-irelia.webp",
+    imageUrl: "/hero/rivals/04-swain-irelia.png",
     cards: [
       { number: 173, name: "Swain, Visionary" },
       { number: 174, name: "Irelia, Fervent" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/05-jayce-viktor.webp",
+    imageUrl: "/hero/rivals/05-jayce-viktor.png",
     cards: [
       { number: 175, name: "Jayce, Man of Progress" },
       { number: 176, name: "Viktor, Innovator" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/06-renekton-nasus.webp",
+    imageUrl: "/hero/rivals/06-renekton-nasus.png",
     cards: [
       { number: 177, name: "Renekton, Brute" },
       { number: 178, name: "Nasus, Guardian of Knowledge" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/07-rengar-khazix.webp",
+    imageUrl: "/hero/rivals/07-rengar-khazix.png",
     cards: [
       { number: 179, name: "Rengar, Trophy Hunter" },
       { number: 180, name: "Kha’Zix, Evolving Hunter" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/08-gangplank-illaoi.webp",
+    imageUrl: "/hero/rivals/08-gangplank-illaoi.png",
     cards: [
       { number: 181, name: "Gangplank, Naval" },
       { number: 182, name: "Illaoi, Prophet of the Great Kraken" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/09-diana-leona.webp",
+    imageUrl: "/hero/rivals/09-diana-leona.png",
     cards: [
       { number: 183, name: "Diana, No Longer Human" },
       { number: 184, name: "Leona, Determined" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/10-kayle-morgana.webp",
+    imageUrl: "/hero/rivals/10-kayle-morgana.png",
     cards: [
       { number: 185, name: "Kayle, Justified" },
       { number: 186, name: "Morgana, Vindictive" },
     ],
   },
   {
-    imageUrl: "/hero/rivals/11-ambessa-mel.webp",
+    imageUrl: "/hero/rivals/11-ambessa-mel.png",
     cards: [
       { number: 187, name: "Ambessa, Respected and Feared" },
       { number: 188, name: "Mel, Defiant Soul" },
