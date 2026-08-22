@@ -235,6 +235,46 @@ test("Common and Uncommon base cards keep distinct Normal and Foil prices", () =
   );
 });
 
+test("the effective price stays attached to the displayed impression across every price mode", () => {
+  const base = {
+    kind: "base",
+    number: "039",
+    rarity: "Epic",
+    pricing: "single",
+    price: { low: 35, trend: 41, avg30: 38 },
+  };
+  const alternate = {
+    kind: "alternate",
+    number: "039a",
+    rarity: "Showcase",
+    pricing: "single",
+    price: { low: 40, trend: 43, avg30: 42 },
+  };
+  const overnumbered = {
+    kind: "overnumbered",
+    number: "227",
+    rarity: "Showcase",
+    pricing: "single",
+    price: { low: 310, trend: 360, avg30: 340 },
+  };
+  const signature = {
+    kind: "signature",
+    number: "227*",
+    rarity: "Showcase",
+    pricing: "single",
+    price: { low: 2499.95, trend: 2600, avg30: 2550 },
+  };
+  const family = [base, alternate, overnumbered, signature];
+  const numberedRow = { id: "ahri-039", name: "Ahri", sortOrder: 39, variants: [base, alternate], associatedVariants: family };
+  const collectorRow = { id: "ahri-227", name: "Ahri", sortOrder: 227, variants: [overnumbered, signature], associatedVariants: family };
+
+  for (const [mode, expected] of Object.entries({ low: [35, 40, 2499.95], trend: [41, 43, 2600], avg30: [38, 42, 2550] })) {
+    assert.equal(getEffectiveSortPrice(numberedRow, base, mode), expected[0], `${mode}: base`);
+    assert.equal(getEffectiveSortPrice(numberedRow, alternate, mode), expected[1], `${mode}: alternate`);
+    assert.equal(getEffectiveSortPrice(collectorRow, overnumbered, mode), expected[2], `${mode}: overnumbered`);
+  }
+});
+
 test("changing price mode rebuilds a descending order and keeps missing values last", () => {
   const tabs = [
     "Toutes",

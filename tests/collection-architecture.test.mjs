@@ -7,6 +7,8 @@ const hook = readFileSync(new URL("../hooks/use-collection.ts", import.meta.url)
 const page = readFileSync(new URL("../app/components/collection-page.tsx", import.meta.url), "utf8");
 const header = readFileSync(new URL("../app/components/site-header.tsx", import.meta.url), "utf8");
 const catalog = readFileSync(new URL("../app/components/catalog-page.tsx", import.meta.url), "utf8");
+const catalogRow = readFileSync(new URL("../app/components/catalog/CatalogRow.tsx", import.meta.url), "utf8");
+const variantDetails = readFileSync(new URL("../app/components/catalog/VariantDetails.tsx", import.meta.url), "utf8");
 
 test("stores only a per-impression collection status in localStorage", () => {
   assert.match(collection, /CollectionStatus = "owned" \| "missing"/);
@@ -30,9 +32,11 @@ test("adds the global collection routes and uses the shared catalogue data", () 
 });
 
 test("keeps the actions on individual impressions and reuses them from set details", () => {
-  assert.match(page, /\+ Ajouter aux \$\{actionLabel\}/);
-  assert.match(page, /Ajoutée aux \$\{actionLabel\} ✓/);
-  assert.match(page, /Retirer/);
-  assert.match(catalog, /variant-collection-actions/);
-  assert.match(catalog, /getCollectionImpressionId\(setCode, variant\.id\)/);
+  assert.match(page, /collection\.setOwned\(impression\.impressionId\)/);
+  assert.match(page, /collection\.setMissing\(impression\.impressionId\)/);
+  assert.match(page, /collection\.clearStatus\(impression\.impressionId\)/);
+  assert.match(catalog, /<CatalogRow/);
+  assert.match(catalogRow, /<VariantDetails row=\{row\} mode=\{priceMode\} setCode=\{setCode\} \/>/);
+  assert.match(variantDetails, /variant-collection-status/);
+  assert.match(variantDetails, /getCollectionImpressionId\(setCode, variant\.id\)/);
 });

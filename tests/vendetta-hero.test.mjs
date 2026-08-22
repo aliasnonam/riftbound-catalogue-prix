@@ -6,6 +6,10 @@ const component = readFileSync(
   new URL("../app/components/catalog-page.tsx", import.meta.url),
   "utf8",
 );
+const rivalsGallery = readFileSync(
+  new URL("../app/components/galleries/RivalsGallery.tsx", import.meta.url),
+  "utf8",
+);
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test("keeps the Vendetta Vi and Jinx Rival diptych in the hero", () => {
@@ -54,16 +58,19 @@ test("ships all 11 Rival diptychs with arrows, counter and swipe navigation", ()
     );
   }
 
-  assert.match(component, /function RivalsGalleryDialog/);
-  assert.match(component, /Diptyque précédent/);
-  assert.match(component, /Diptyque suivant/);
-  assert.match(component, /touchStartXRef/);
-  assert.match(component, /index \+ 1/);
-  assert.match(component, /RIVAL_DIPTYCHES\.length/);
-  assert.match(component, /Ouvrir la fiche de \$\{card\.name\}/);
-  assert.match(component, /Afficher le diptyque \$\{itemIndex \+ 1\}/);
-  assert.match(component, /aria-current=\{itemIndex === index \? "true" : undefined\}/);
-  assert.match(component, /onClick=\{\(\) => setIndex\(itemIndex\)\}/);
+  assert.match(component, /<RivalsGallery/);
+  assert.match(rivalsGallery, /export function RivalsGallery/);
+  assert.match(rivalsGallery, /Diptyque précédent/);
+  assert.match(rivalsGallery, /Diptyque suivant/);
+  assert.match(rivalsGallery, /touchStartXRef/);
+  assert.match(rivalsGallery, /index \+ 1/);
+  assert.match(rivalsGallery, /diptyches\.length/);
+  assert.match(rivalsGallery, /Ouvrir la fiche de \$\{card\.name\}/);
+  assert.match(rivalsGallery, /Afficher le diptyque \$\{itemIndex \+ 1\}/);
+  assert.match(rivalsGallery, /aria-current=\{itemIndex === index \? "true" : undefined\}/);
+  assert.match(rivalsGallery, /onClick=\{\(\) => setIndex\(itemIndex\)\}/);
   assert.match(css, /\.rivals-gallery-progress button \{[\s\S]*cursor: pointer;/);
-  assert.match(css, /\.rivals-gallery-slide > img \{[\s\S]*transform: scale\(1\.028\);/);
+  assert.match(css, /\.rivals-gallery-slide \{[\s\S]*background: #070a10;/);
+  assert.match(css, /\.rivals-gallery-slide > img \{[\s\S]*object-fit: contain;/);
+  assert.doesNotMatch(css, /\.rivals-gallery-slide > img \{[\s\S]*transform: scale\(1\.028\);/);
 });
