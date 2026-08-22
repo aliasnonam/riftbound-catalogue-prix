@@ -16,10 +16,10 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/og.png",
-        width: 1200,
-        height: 630,
-        alt: "Riftbound — Catalogue & Prix · Origins · Spiritforged · Unleashed · Vendetta",
+        url: "/riftbound-social-preview-v2.png",
+        width: 1672,
+        height: 941,
+        alt: "Riftbound — Catalogue & Prix · Vi et Jinx",
       },
     ],
   },
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     title: "Riftbound — Catalogue & Prix",
     description:
       "Les cartes des quatre premiers sets et leurs prix Cardmarket.",
-    images: ["/og.png"],
+    images: ["/riftbound-social-preview-v2.png"],
   },
   icons: {
     icon: "/favicon.svg",
