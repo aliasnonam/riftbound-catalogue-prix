@@ -35,16 +35,25 @@ export function useCollection() {
     };
   }, []);
 
+  const persist = useCallback((next: CollectionState) => {
+    window.localStorage.setItem(COLLECTION_STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent(COLLECTION_CHANGE_EVENT, { detail: next }));
+  }, []);
+
   const setStatus = useCallback((impressionId: string, status: CollectionStatus | null) => {
     setState((current) => {
       const next = { ...current };
       if (status) next[impressionId] = status;
       else delete next[impressionId];
-      window.localStorage.setItem(COLLECTION_STORAGE_KEY, JSON.stringify(next));
-      window.dispatchEvent(new CustomEvent(COLLECTION_CHANGE_EVENT, { detail: next }));
+      persist(next);
       return next;
     });
-  }, []);
+  }, [persist]);
+
+  const restore = useCallback((next: CollectionState) => {
+    persist(next);
+    setState(next);
+  }, [persist]);
 
   return useMemo(() => ({
     ready,
@@ -53,5 +62,6 @@ export function useCollection() {
     setOwned: (impressionId: string) => setStatus(impressionId, "owned"),
     setMissing: (impressionId: string) => setStatus(impressionId, "missing"),
     clearStatus: (impressionId: string) => setStatus(impressionId, null),
-  }), [ready, setStatus, state]);
+    restore,
+  }), [ready, restore, setStatus, state]);
 }

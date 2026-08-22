@@ -4,11 +4,19 @@
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { SiteHeader } from "@/app/components/site-header";
 import type { CatalogPayload, CatalogVariant, VariantKind } from "@/lib/catalog";
-import { flattenCatalogPayload, getCollectionPrice, type CollectionImpression } from "@/lib/collection";
+import {
+  collectionBackupFilename,
+  createCollectionBackup,
+  flattenCatalogPayload,
+  getCollectionPrice,
+  parseCollectionBackup,
+  type CollectionImpression,
+  type CollectionState,
+} from "@/lib/collection";
 import { getVariantFoilPrice, getVariantNormalPrice, type PriceMode } from "@/lib/pricing";
 import { SETS, type SetCode } from "@/lib/sets";
 import { useCollection } from "@/hooks/use-collection";
@@ -104,6 +112,98 @@ function CollectionCardDialog({ impression, onClose }: { impression: CollectionI
   return createPortal(<div className="card-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="card-preview-dialog" role="dialog" aria-modal="true" aria-label={`${variant.name}, ${variant.number}`}><button className="card-preview-close" type="button" aria-label="Fermer l’aperçu" onClick={onClose}>×</button><img src={variant.imageUrl} alt={`Carte ${variant.name}`} /><p>{setName} · {variant.number} · {labelForVariant(variant)} · {row.type}{row.domains.length ? ` · ${row.domains.join(" / ")}` : ""}</p></section></div>, document.body);
 }
 
+type PendingCollectionRestore = {
+  collection: CollectionState;
+  restored: number;
+  ignored: number;
+};
+
+function CollectionBackupControls({ impressions }: { impressions: CollectionImpression[] }) {
+  const collection = useCollection();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [pendingRestore, setPendingRestore] = useState<PendingCollectionRestore | null>(null);
+  const knownImpressionIds = useMemo(() => new Set(impressions.map((impression) => impression.impressionId)), [impressions]);
+
+  useEffect(() => {
+    if (!pendingRestore) return;
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setPendingRestore(null); };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [pendingRestore]);
+
+  const restore = (next: PendingCollectionRestore) => {
+    collection.restore(next.collection);
+    setPendingRestore(null);
+    setMessage({
+      kind: "success",
+      text: `Collection restaurée ✓ — ${next.restored} statut${next.restored > 1 ? "s" : ""} restauré${next.restored > 1 ? "s" : ""}${next.ignored ? ` · ${next.ignored} entrée${next.ignored > 1 ? "s" : ""} inconnue${next.ignored > 1 ? "s" : ""} ignorée${next.ignored > 1 ? "s" : ""}` : ""}`,
+    });
+  };
+
+  const exportBackup = () => {
+    const backup = createCollectionBackup(collection.state);
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = collectionBackupFilename();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+    setMessage({ kind: "success", text: "Sauvegarde exportée ✓" });
+  };
+
+  const importBackup = async (file?: File) => {
+    if (!file) return;
+    let raw: string;
+    try {
+      raw = await file.text();
+    } catch {
+      setMessage({ kind: "error", text: "Impossible d’importer ce fichier. La sauvegarde n’est pas valide." });
+      return;
+    }
+    const parsed = parseCollectionBackup(raw);
+    if (!parsed.ok) {
+      setMessage({
+        kind: "error",
+        text: parsed.reason === "unsupported-version" ? "Cette sauvegarde utilise une version non prise en charge." : "Impossible d’importer ce fichier. La sauvegarde n’est pas valide.",
+      });
+      return;
+    }
+    const entries = Object.entries(parsed.backup.collection);
+    const accepted = entries.filter(([impressionId]) => knownImpressionIds.has(impressionId));
+    if (!accepted.length && entries.length) {
+      setMessage({ kind: "error", text: "Aucun statut de cette sauvegarde ne correspond au catalogue actuel." });
+      return;
+    }
+    const next = { collection: Object.fromEntries(accepted), restored: accepted.length, ignored: entries.length - accepted.length };
+    if (Object.keys(collection.state).length) setPendingRestore(next);
+    else restore(next);
+  };
+
+  return <section className="collection-backup" aria-labelledby="collection-backup-title">
+    <div>
+      <p className="eyebrow">Sauvegarde locale</p>
+      <h2 id="collection-backup-title">Sauvegarde de la collection</h2>
+      <p>Sauvegarde ou restaure tes cartes possédées et manquantes sur cet appareil.</p>
+    </div>
+    <div className="collection-backup-actions">
+      <button type="button" onClick={exportBackup}>Exporter ma collection</button>
+      <button type="button" className="secondary" onClick={() => fileInputRef.current?.click()}>Importer ma collection</button>
+      <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={(event) => { const [file] = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importBackup(file); }} />
+    </div>
+    {message ? <p className={`collection-backup-message is-${message.kind}`} role="status">{message.text}</p> : null}
+    {pendingRestore ? createPortal(<div className="collection-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingRestore(null); }}><section className="collection-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-restore-title"><p className="eyebrow">Sauvegarde locale</p><h2 id="collection-restore-title">Restaurer cette sauvegarde ?</h2><p>Cette opération remplacera les statuts actuellement enregistrés sur cet appareil.</p><p className="collection-confirm-summary"><strong>{pendingRestore.restored}</strong> statut{pendingRestore.restored > 1 ? "s" : ""} à restaurer{pendingRestore.ignored ? <> · <strong>{pendingRestore.ignored}</strong> entrée{pendingRestore.ignored > 1 ? "s" : ""} inconnue{pendingRestore.ignored > 1 ? "s" : ""} ignorée{pendingRestore.ignored > 1 ? "s" : ""}</> : null}</p><div><button type="button" className="secondary" onClick={() => setPendingRestore(null)}>Annuler</button><button type="button" onClick={() => restore(pendingRestore)}>Restaurer</button></div></section></div>, document.body) : null}
+  </section>;
+}
+
 function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<CollectionView, "home">; impressions: CollectionImpression[]; focusSetCode?: SetCode }) {
   const collection = useCollection();
   const [query, setQuery] = useState("");
@@ -152,6 +252,7 @@ export function CollectionPage({ view, focusSetCode }: { view: CollectionView; f
   return <div className="site-shell collection-site-shell"><SiteHeader />{loading ? <main className="collection-shell"><div className="collection-loading">Chargement de la collection…</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>La collection n’a pas pu être chargée.</h2><p>Réessaie dans un instant.</p></div></main> : view === "home" ? <main className="collection-shell">
     <div className="collection-heading"><div><p className="eyebrow">Collection personnelle</p><h1>Ma collection</h1><p>Organise toutes tes impressions Riftbound, directement sur cet appareil.</p></div><div className="collection-progress"><strong>{owned} / {total}</strong><span>impressions possédées</span><i><b style={{ width: total ? `${Math.round((owned / total) * 100)}%` : "0%" }} /></i></div></div>
     <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>À compléter</small><h2>Cartes manquantes</h2><p>Prépare ta liste d’achat et compare les prix en un coup d’œil.</p></div><strong>{missing}</strong><em>Voir la liste →</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>Déjà dans le classeur</small><h2>Cartes possédées</h2><p>Retrouve tes impressions classées et ta progression par set.</p></div><strong>{owned}</strong><em>Voir la liste →</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>Organisation</small><h2>Gérer mes cartes</h2><p>Ajoute, modifie ou retire le statut de chaque impression.</p></div><strong>{owned + missing}</strong><em>Gérer la collection →</em></Link></section>
+    <CollectionBackupControls impressions={impressions} />
     <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, total: setTotal, owned: setOwned, missing: setMissing }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><strong>{setOwned} / {setTotal}</strong><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><i><b style={{ width: setTotal ? `${Math.round((setOwned / setTotal) * 100)}%` : "0%" }} /></i></Link>)}</div></section>
   </main> : <CollectionList view={view} impressions={impressions} focusSetCode={focusSetCode} />}<footer className="site-footer"><div><strong>Riftbound — Catalogue & prix</strong><p>Ta collection est mémorisée localement sur cet appareil.</p></div></footer></div>;
 }
