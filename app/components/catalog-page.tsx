@@ -1106,11 +1106,11 @@ function VariantDetails({ row, mode, setCode }: { row: CatalogRow; mode: PriceMo
                   <b>{formatPrice(getPrimaryVariantPrice(variant, mode))}</b>
                 </div>
               )}
-              <div className="variant-collection-actions">
+              <div className="variant-collection-status">
                 <span>Ma collection</span>
-                <button type="button" className={collection.getStatus(getCollectionImpressionId(setCode, variant.id)) === "owned" ? "is-owned" : ""} onClick={() => collection.setOwned(getCollectionImpressionId(setCode, variant.id))}>Possédée</button>
-                <button type="button" className={collection.getStatus(getCollectionImpressionId(setCode, variant.id)) === "missing" ? "is-missing" : ""} onClick={() => collection.setMissing(getCollectionImpressionId(setCode, variant.id))}>Manquante</button>
-                {collection.getStatus(getCollectionImpressionId(setCode, variant.id)) !== "unknown" ? <button type="button" className="is-clear" onClick={() => collection.clearStatus(getCollectionImpressionId(setCode, variant.id))}>Retirer</button> : null}
+                <b className={`collection-status-badge is-${collection.getStatus(getCollectionImpressionId(setCode, variant.id))}`}>
+                  {collection.getStatus(getCollectionImpressionId(setCode, variant.id)) === "owned" ? "✓ Possédée" : collection.getStatus(getCollectionImpressionId(setCode, variant.id)) === "missing" ? "✕ Manquante" : "— Non renseignée"}
+                </b>
               </div>
             </div>
           </article>
