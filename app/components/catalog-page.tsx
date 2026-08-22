@@ -27,9 +27,8 @@ import {
   type FilterKind,
 } from "@/lib/catalog-presentation";
 import {
-  compareByHighestActivePrice,
+  compareByEffectivePrice,
   getPrimaryVariantPrice,
-  getVariantActivePrices,
   getVariantFoilPrice,
   getVariantNormalPrice,
   type PriceMode,
@@ -322,21 +321,6 @@ function variantForDisplay(
     row.variants.find((variant) => variant.kind === "base") ??
     row.variants[0]
   );
-}
-
-function filteredMaxPrice(
-  row: CatalogRow,
-  mode: PriceMode,
-  filter: FilterKind,
-  rarity: string,
-) {
-  const relevantVariants = variantsForFilter(row, filter).filter(
-    (variant) => rarity === "all" || variant.rarity === rarity,
-  );
-  const availableValues = relevantVariants.flatMap((variant) =>
-    getVariantActivePrices(variant, mode),
-  );
-  return availableValues.length ? Math.max(...availableValues) : null;
 }
 
 function rarityLabel(rarity: string) {
@@ -1410,34 +1394,26 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       return matchesQuery && matchesRarity && matchesKind;
     });
 
-    return rows.sort((a, b) => {
-      if (sortMode === "name") return a.name.localeCompare(b.name, "fr");
+    const sortableRows = rows.map((row) => ({
+      row,
+      displayedVariant: variantForDisplay(row, activeFilterKind, rarity),
+    }));
+
+    return sortableRows.sort((a, b) => {
+      if (sortMode === "name") {
+        return a.row.name.localeCompare(b.row.name, "fr");
+      }
       if (sortMode === "price-desc") {
-        return compareByHighestActivePrice(a, b, priceMode);
+        return compareByEffectivePrice(a, b, priceMode, "desc");
       }
       if (sortMode === "price-asc") {
-        const aValue = filteredMaxPrice(
-          a,
-          priceMode,
-          activeFilterKind,
-          rarity,
-        );
-        const bValue = filteredMaxPrice(
-          b,
-          priceMode,
-          activeFilterKind,
-          rarity,
-        );
-        if (aValue === null && bValue === null) return a.sortOrder - b.sortOrder;
-        if (aValue === null) return 1;
-        if (bValue === null) return -1;
-        return aValue - bValue;
+        return compareByEffectivePrice(a, b, priceMode, "asc");
       }
-      if (a.sortOrder !== b.sortOrder) {
-        return a.sortOrder - b.sortOrder;
+      if (a.row.sortOrder !== b.row.sortOrder) {
+        return a.row.sortOrder - b.row.sortOrder;
       }
-      return a.name.localeCompare(b.name, "fr");
-    });
+      return a.row.name.localeCompare(b.row.name, "fr");
+    }).map(({ row }) => row);
   })();
 
   const visibleRows = filteredRows.slice(0, visibleCount);
