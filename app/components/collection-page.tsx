@@ -13,7 +13,9 @@ import {
   collectionBackupFilename,
   createCollectionBackup,
   flattenCatalogPayload,
+  getCollectionFinancialSummary,
   getCollectionPrice,
+  getCollectionProgress,
   parseCollectionBackup,
   type CollectionImpression,
   type CollectionState,
@@ -33,6 +35,7 @@ const RARITY_LABELS: Record<string, string> = { Common: "Commune", Uncommon: "Pe
 const KIND_LABELS: Record<VariantKind, string> = { base: "Set", alternate: "Alternative", "crystal-rose": "Crystal Rose", overnumbered: "Outnumbered", signature: "Signée", other: "Spéciale" };
 
 function formatPrice(value: number | null) { return value === null ? "—" : EURO.format(value); }
+function formatPercent(value: number) { return `${value.toLocaleString("fr-FR", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} %`; }
 function labelForVariant(variant: CatalogVariant) { return variant.kind === "base" ? (RARITY_LABELS[variant.rarity] ?? variant.rarity) : KIND_LABELS[variant.kind]; }
 function statusLabel(status: DisplayStatus) { return status === "owned" ? "✓ Possédée" : status === "missing" ? "✕ Manquante" : "— Non renseignée"; }
 function collectionHref(view: Exclude<CollectionView, "home">, focusSetCode?: SetCode) {
@@ -61,10 +64,13 @@ function CollectionStatusBadge({ status }: { status: DisplayStatus }) {
 
 function ManageStatusActions({ impression, status }: { impression: CollectionImpression; status: DisplayStatus }) {
   const collection = useCollection();
+  const foilAvailable = status === "owned" && impression.variant.pricing === "dual";
+  const isFoil = collection.isFoil(impression);
   return <div className="collection-manage-actions" aria-label={`Gérer ${impression.variant.name}`}>
     {status !== "owned" ? <button type="button" className="owned" onClick={() => collection.setOwned(impression.impressionId)}>Marquer comme possédée</button> : null}
     {status !== "missing" ? <button type="button" className="missing" onClick={() => collection.setMissing(impression.impressionId)}>Marquer comme manquante</button> : null}
     {status !== "unknown" ? <button type="button" className="clear" onClick={() => collection.clearStatus(impression.impressionId)}>Retirer le statut</button> : null}
+    {foilAvailable ? <button type="button" className={`foil${isFoil ? " is-active" : ""}`} aria-pressed={isFoil} aria-label={`${isFoil ? "Retirer" : "Indiquer"} la finition Foil pour ${impression.variant.name}`} onClick={() => collection.setFoil(impression, !isFoil)}>{isFoil ? "✦ Foil" : "☆ Foil"}</button> : null}
   </div>;
 }
 
@@ -106,6 +112,7 @@ function ImpressionCard({ impression, priceMode, editable, onPreview }: { impres
   const collection = useCollection();
   const { variant, row, setName } = impression;
   const status = collection.getStatus(impression.impressionId);
+  const isFoil = collection.isFoil(impression);
   return <article className="collection-impression-card">
     <button className="collection-impression-preview" type="button" onClick={onPreview} disabled={!variant.imageUrl} aria-label={variant.imageUrl ? `Agrandir ${variant.name}` : undefined}>
       <span className="collection-impression-art">{variant.imageUrl ? <img src={variant.imageUrl} alt={`Carte ${variant.name}`} loading="lazy" /> : <span>◇</span>}</span>
@@ -117,7 +124,7 @@ function ImpressionCard({ impression, priceMode, editable, onPreview }: { impres
       </span>
     </button>
     <footer className="collection-card-footer">
-      <CollectionStatusBadge status={status} />
+      <span className="collection-card-statuses"><CollectionStatusBadge status={status} />{!editable && isFoil ? <span className="collection-foil-badge">✦ Foil</span> : null}</span>
       {editable ? <ManageStatusActions impression={impression} status={status} /> : <a className="collection-cardmarket-link" href={row.cardmarketUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>{status === "missing" ? "Voir / acheter sur Cardmarket ↗" : "Voir sur Cardmarket ↗"}</a>}
     </footer>
   </article>;
@@ -274,12 +281,39 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
 export function CollectionPage({ view, focusSetCode }: { view: CollectionView; focusSetCode?: SetCode }) {
   const { impressions, loading, error } = useAllImpressions();
   const collection = useCollection();
-  const stats = useMemo(() => SETS.map((set) => { const setItems = impressions.filter((item) => item.setCode === set.code); return { set, total: setItems.length, owned: setItems.filter((item) => collection.getStatus(item.impressionId) === "owned").length, missing: setItems.filter((item) => collection.getStatus(item.impressionId) === "missing").length }; }), [collection, impressions]);
-  const total = impressions.length; const owned = stats.reduce((sum, item) => sum + item.owned, 0); const missing = stats.reduce((sum, item) => sum + item.missing, 0);
+  const [dashboardPriceMode, setDashboardPriceMode] = useState<PriceMode>("low");
+  const dashboard = useMemo(() => {
+    const masterSet = getCollectionProgress(impressions, collection.state);
+    const numberedSet = getCollectionProgress(impressions, collection.state, (impression) => impression.row.isNumbered);
+    const ownedValue = getCollectionFinancialSummary(impressions, collection.state, "owned", dashboardPriceMode);
+    const missingCost = getCollectionFinancialSummary(impressions, collection.state, "missing", dashboardPriceMode);
+    const sets = SETS.map((set) => {
+      const setImpressions = impressions.filter((impression) => impression.setCode === set.code);
+      return {
+        set,
+        masterSet: getCollectionProgress(setImpressions, collection.state),
+        numberedSet: getCollectionProgress(setImpressions, collection.state, (impression) => impression.row.isNumbered),
+        missing: setImpressions.filter((impression) => collection.getStatus(impression.impressionId) === "missing").length,
+        ownedValue: getCollectionFinancialSummary(setImpressions, collection.state, "owned", dashboardPriceMode),
+        missingCost: getCollectionFinancialSummary(setImpressions, collection.state, "missing", dashboardPriceMode),
+      };
+    });
+    return { masterSet, numberedSet, ownedValue, missingCost, sets };
+  }, [collection, dashboardPriceMode, impressions]);
+  const { masterSet, numberedSet, ownedValue, missingCost, sets: stats } = dashboard;
+  const owned = masterSet.owned;
+  const missing = stats.reduce((sum, item) => sum + item.missing, 0);
   return <div className="site-shell collection-site-shell"><SiteHeader />{loading ? <main className="collection-shell"><div className="collection-loading">Chargement de la collection…</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>La collection n’a pas pu être chargée.</h2><p>Réessaie dans un instant.</p></div></main> : view === "home" ? <main className="collection-shell">
-    <div className="collection-heading"><div><p className="eyebrow">Collection personnelle</p><h1>Ma collection</h1><p>Organise toutes tes impressions Riftbound, directement sur cet appareil.</p></div><div className="collection-progress"><strong>{owned} / {total}</strong><span>impressions possédées</span><i><b style={{ width: total ? `${Math.round((owned / total) * 100)}%` : "0%" }} /></i></div></div>
+    <div className="collection-heading"><div><p className="eyebrow">Collection personnelle</p><h1>Ma collection</h1><p>Organise toutes tes impressions Riftbound, directement sur cet appareil.</p></div></div>
+    <section className="collection-dashboard" aria-label="Résumé de ma collection">
+      <div className="collection-dashboard-kpi"><span>Set numéroté</span><strong>{numberedSet.owned} / {numberedSet.total}</strong><p>{formatPercent(numberedSet.percentage)}</p><i><b style={{ width: `${numberedSet.percentage}%` }} /></i></div>
+      <div className="collection-dashboard-kpi"><span>Master set</span><strong>{masterSet.owned} / {masterSet.total}</strong><p>{formatPercent(masterSet.percentage)}</p><i><b style={{ width: `${masterSet.percentage}%` }} /></i></div>
+      <div className="collection-dashboard-kpi is-value"><span>Valeur estimée</span><strong>{formatPrice(ownedValue.total)}</strong>{ownedValue.withoutPrice ? <p>{ownedValue.withoutPrice} impression{ownedValue.withoutPrice > 1 ? "s" : ""} sans prix</p> : <p>Cartes possédées</p>}</div>
+      <div className="collection-dashboard-kpi is-value"><span>Coût pour compléter</span><strong>{formatPrice(missingCost.total)}</strong>{missingCost.withoutPrice ? <p>{missingCost.withoutPrice} impression{missingCost.withoutPrice > 1 ? "s" : ""} sans prix</p> : <p>Cartes manquantes</p>}</div>
+      <CustomSelect className="collection-dashboard-select" label="Valeur utilisée" value={dashboardPriceMode} onChange={(value) => setDashboardPriceMode(value as PriceMode)} options={[{ value: "low", label: "Prix minimum" }, { value: "trend", label: "Tendance Cardmarket" }, { value: "avg30", label: "Moyenne 30 jours" }]} />
+    </section>
     <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>À compléter</small><h2>Cartes manquantes</h2><p>Prépare ta liste d’achat et compare les prix en un coup d’œil.</p></div><strong>{missing}</strong><em>Voir la liste →</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>Déjà dans le classeur</small><h2>Cartes possédées</h2><p>Retrouve tes impressions classées et ta progression par set.</p></div><strong>{owned}</strong><em>Voir la liste →</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>Organisation</small><h2>Gérer mes cartes</h2><p>Ajoute, modifie ou retire le statut de chaque impression.</p></div><strong>{owned + missing}</strong><em>Gérer la collection →</em></Link></section>
     <CollectionBackupControls impressions={impressions} />
-    <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, total: setTotal, owned: setOwned, missing: setMissing }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><strong>{setOwned} / {setTotal}</strong><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><i><b style={{ width: setTotal ? `${Math.round((setOwned / setTotal) * 100)}%` : "0%" }} /></i></Link>)}</div></section>
+    <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, numberedSet: setNumbered, masterSet: setMaster, missing: setMissing, ownedValue: setOwnedValue, missingCost: setMissingCost }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><div className="collection-set-metrics"><p>Set numéroté <strong>{setNumbered.owned} / {setNumbered.total}</strong> · {formatPercent(setNumbered.percentage)}</p><p>Master set <strong>{setMaster.owned} / {setMaster.total}</strong> · {formatPercent(setMaster.percentage)}</p></div><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><div className="collection-set-financial"><small>Valeur possédée <b>{formatPrice(setOwnedValue.total)}</b></small><small>Coût restant <b>{formatPrice(setMissingCost.total)}</b></small></div><i><b style={{ width: `${setMaster.percentage}%` }} /></i></Link>)}</div></section>
   </main> : <CollectionList view={view} impressions={impressions} focusSetCode={focusSetCode} />}<footer className="site-footer"><div><strong>Riftbound — Catalogue & prix</strong><p>Ta collection est mémorisée localement sur cet appareil.</p></div></footer></div>;
 }
