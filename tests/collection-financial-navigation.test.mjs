@@ -16,6 +16,7 @@ test("separates numbered, unsigned master, and absolute master missing costs", (
   assert.match(collection, /ownedValue: getCollectionFinancialSummary\(impressions, state, "owned", priceMode\)/);
   assert.match(collection, /getCollectionFinancialSummary\(impressions, state, "missing", priceMode\)/);
   assert.match(collection, /const useFoil = status === "owned" && isFoil/);
+  assert.match(collection, /Toute autre impression est implicitement manquante/);
 });
 
 test("renders the three completion costs in the dashboard and each set summary", () => {

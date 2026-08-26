@@ -26,7 +26,7 @@ import { useCollection } from "@/hooks/use-collection";
 
 export type CollectionView = "home" | "missing" | "owned" | "manage";
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
-type DisplayStatus = "owned" | "missing" | "unknown";
+type DisplayStatus = "owned" | "missing";
 type CollectionExclusion = "signature" | "overnumbered" | "alternate" | "Epic" | "Showcase";
 
 const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
@@ -38,7 +38,7 @@ const COLLECTION_BATCH_SIZE = 36;
 function formatPrice(value: number | null) { return value === null ? "—" : EURO.format(value); }
 function formatPercent(value: number) { return `${value.toLocaleString("fr-FR", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} %`; }
 function labelForVariant(variant: CatalogVariant) { return variant.kind === "base" ? (RARITY_LABELS[variant.rarity] ?? variant.rarity) : KIND_LABELS[variant.kind]; }
-function statusLabel(status: DisplayStatus) { return status === "owned" ? "✓ Possédée" : status === "missing" ? "✕ Manquante" : "— Non renseignée"; }
+function statusLabel(status: DisplayStatus) { return status === "owned" ? "✓ Possédée" : "✕ Manquante"; }
 function collectionHref(view: Exclude<CollectionView, "home">, focusSetCode?: SetCode) {
   const set = focusSetCode ? SETS.find((item) => item.code === focusSetCode) : undefined;
   return set ? `/collection/${set.slug}/${view}` : `/collection/${view}`;
@@ -68,9 +68,7 @@ function ManageStatusActions({ impression, status }: { impression: CollectionImp
   const foilAvailable = status === "owned" && impression.variant.pricing === "dual";
   const isFoil = collection.isFoil(impression);
   return <div className="collection-manage-actions" aria-label={`Gérer ${impression.variant.name}`}>
-    {status !== "owned" ? <button type="button" className="owned" onClick={() => collection.setOwned(impression.impressionId)}>Marquer comme possédée</button> : null}
-    {status !== "missing" ? <button type="button" className="missing" onClick={() => collection.setMissing(impression.impressionId)}>Marquer comme manquante</button> : null}
-    {status !== "unknown" ? <button type="button" className="clear" onClick={() => collection.clearStatus(impression.impressionId)}>Retirer le statut</button> : null}
+    {status === "missing" ? <button type="button" className="owned" onClick={() => collection.setOwned(impression.impressionId)}>Marquer comme possédée</button> : <button type="button" className="missing" onClick={() => collection.setMissing(impression.impressionId)}>Marquer comme manquante</button>}
     {foilAvailable ? <button type="button" className={`foil${isFoil ? " is-active" : ""}`} aria-pressed={isFoil} aria-label={`${isFoil ? "Retirer" : "Indiquer"} la finition Foil pour ${impression.variant.name}`} onClick={() => collection.setFoil(impression, !isFoil)}>{isFoil ? "✦ Foil" : "☆ Foil"}</button> : null}
   </div>;
 }
@@ -174,7 +172,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     setPendingRestore(null);
     setMessage({
       kind: "success",
-      text: `Collection restaurée ✓ — ${next.restored} statut${next.restored > 1 ? "s" : ""} restauré${next.restored > 1 ? "s" : ""}${next.ignored ? ` · ${next.ignored} entrée${next.ignored > 1 ? "s" : ""} inconnue${next.ignored > 1 ? "s" : ""} ignorée${next.ignored > 1 ? "s" : ""}` : ""}`,
+      text: `Collection restaurée ✓ — ${next.restored} carte${next.restored > 1 ? "s" : ""} possédée${next.restored > 1 ? "s" : ""} restaurée${next.restored > 1 ? "s" : ""}${next.ignored ? ` · ${next.ignored} entrée${next.ignored > 1 ? "s" : ""} non reconnue${next.ignored > 1 ? "s" : ""} ignorée${next.ignored > 1 ? "s" : ""}` : ""}`,
     });
   };
 
@@ -212,7 +210,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     const entries = Object.entries(parsed.backup.collection);
     const accepted = entries.filter(([impressionId]) => knownImpressionIds.has(impressionId));
     if (!accepted.length && entries.length) {
-      setMessage({ kind: "error", text: "Aucun statut de cette sauvegarde ne correspond au catalogue actuel." });
+      setMessage({ kind: "error", text: "Aucune carte possédée de cette sauvegarde ne correspond au catalogue actuel." });
       return;
     }
     const next = { collection: Object.fromEntries(accepted), restored: accepted.length, ignored: entries.length - accepted.length };
@@ -224,7 +222,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     <div>
       <p className="eyebrow">Sauvegarde locale</p>
       <h2 id="collection-backup-title">Sauvegarde de la collection</h2>
-      <p>Sauvegarde ou restaure tes cartes possédées et manquantes sur cet appareil.</p>
+      <p>Sauvegarde ou restaure tes cartes possédées sur cet appareil. Les autres impressions restent manquantes par défaut.</p>
     </div>
     <div className="collection-backup-actions">
       <button type="button" onClick={exportBackup}>Exporter ma collection</button>
@@ -232,7 +230,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
       <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={(event) => { const [file] = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importBackup(file); }} />
     </div>
     {message ? <p className={`collection-backup-message is-${message.kind}`} role="status">{message.text}</p> : null}
-    {pendingRestore ? createPortal(<div className="collection-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingRestore(null); }}><section className="collection-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-restore-title"><p className="eyebrow">Sauvegarde locale</p><h2 id="collection-restore-title">Restaurer cette sauvegarde ?</h2><p>Cette opération remplacera les statuts actuellement enregistrés sur cet appareil.</p><p className="collection-confirm-summary"><strong>{pendingRestore.restored}</strong> statut{pendingRestore.restored > 1 ? "s" : ""} à restaurer{pendingRestore.ignored ? <> · <strong>{pendingRestore.ignored}</strong> entrée{pendingRestore.ignored > 1 ? "s" : ""} inconnue{pendingRestore.ignored > 1 ? "s" : ""} ignorée{pendingRestore.ignored > 1 ? "s" : ""}</> : null}</p><div><button type="button" className="secondary" onClick={() => setPendingRestore(null)}>Annuler</button><button type="button" onClick={() => restore(pendingRestore)}>Restaurer</button></div></section></div>, document.body) : null}
+    {pendingRestore ? createPortal(<div className="collection-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingRestore(null); }}><section className="collection-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-restore-title"><p className="eyebrow">Sauvegarde locale</p><h2 id="collection-restore-title">Restaurer cette sauvegarde ?</h2><p>Cette opération remplacera les cartes possédées actuellement enregistrées sur cet appareil.</p><p className="collection-confirm-summary"><strong>{pendingRestore.restored}</strong> carte{pendingRestore.restored > 1 ? "s" : ""} possédée{pendingRestore.restored > 1 ? "s" : ""} à restaurer{pendingRestore.ignored ? <> · <strong>{pendingRestore.ignored}</strong> entrée{pendingRestore.ignored > 1 ? "s" : ""} non reconnue{pendingRestore.ignored > 1 ? "s" : ""} ignorée{pendingRestore.ignored > 1 ? "s" : ""}</> : null}</p><div><button type="button" className="secondary" onClick={() => setPendingRestore(null)}>Annuler</button><button type="button" onClick={() => restore(pendingRestore)}>Restaurer</button></div></section></div>, document.body) : null}
   </section>;
 }
 
@@ -313,7 +311,7 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
     setVisibleCount((current) => Math.max(current, Math.min(filtered.length, Math.ceil(parsedJump / COLLECTION_BATCH_SIZE) * COLLECTION_BATCH_SIZE)));
   };
   const title = view === "missing" ? "Cartes manquantes" : view === "owned" ? "Cartes possédées" : "Gérer mes cartes";
-  const description = view === "missing" ? "Les impressions qu’il reste à ajouter à ta collection." : view === "owned" ? "Les impressions déjà classées dans ta collection." : "Ajoute, modifie ou retire le statut de chaque impression.";
+  const description = view === "missing" ? "Les impressions qu’il reste à ajouter à ta collection." : view === "owned" ? "Les impressions déjà classées dans ta collection." : "Classe chaque impression comme possédée ou manquante.";
   return <main className="collection-shell">
     <Link className="collection-back-link" href="/collection">← Retour à Ma collection</Link>
     <div className="collection-heading"><div><p className="eyebrow" style={focusedSet ? { color: focusedSet.accent } : undefined}>{focusedSet ? `Ma collection · ${focusedSet.name}` : "Ma collection"}</p><h1>{title}</h1><p>{description}</p></div><div className="collection-count"><strong>{filtered.length}</strong><span>impression{filtered.length > 1 ? "s" : ""} affichée{filtered.length > 1 ? "s" : ""}</span></div></div>
@@ -337,11 +335,12 @@ export function CollectionPage({ view, focusSetCode }: { view: CollectionView; f
     const financials = getCollectionFinancialTotals(impressions, collection.state, dashboardPriceMode);
     const sets = SETS.map((set) => {
       const setImpressions = impressions.filter((impression) => impression.setCode === set.code);
+      const setMaster = getCollectionProgress(setImpressions, collection.state);
       return {
         set,
-        masterSet: getCollectionProgress(setImpressions, collection.state),
+        masterSet: setMaster,
         numberedSet: getCollectionProgress(setImpressions, collection.state, (impression) => impression.row.isNumbered),
-        missing: setImpressions.filter((impression) => collection.getStatus(impression.impressionId) === "missing").length,
+        missing: setMaster.total - setMaster.owned,
         financials: getCollectionFinancialTotals(setImpressions, collection.state, dashboardPriceMode),
       };
     });
@@ -349,7 +348,7 @@ export function CollectionPage({ view, focusSetCode }: { view: CollectionView; f
   }, [collection, dashboardPriceMode, impressions]);
   const { masterSet, numberedSet, financials, sets: stats } = dashboard;
   const owned = masterSet.owned;
-  const missing = stats.reduce((sum, item) => sum + item.missing, 0);
+  const missing = masterSet.total - masterSet.owned;
   return <div className="site-shell collection-site-shell"><SiteHeader />{loading ? <main className="collection-shell"><div className="collection-loading">Chargement de la collection…</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>La collection n’a pas pu être chargée.</h2><p>Réessaie dans un instant.</p></div></main> : view === "home" ? <main className="collection-shell">
     <div className="collection-heading"><div><p className="eyebrow">Collection personnelle</p><h1>Ma collection</h1><p>Organise toutes tes impressions Riftbound, directement sur cet appareil.</p></div></div>
     <section className="collection-dashboard" aria-label="Résumé de ma collection">
@@ -361,7 +360,7 @@ export function CollectionPage({ view, focusSetCode }: { view: CollectionView; f
       <div className="collection-dashboard-kpi is-value is-absolute-cost"><span>Coût Master set</span><strong>{formatPrice(financials.masterMissingCost.total)}</strong>{financials.masterMissingCost.withoutPrice ? <p>{financials.masterMissingCost.withoutPrice} impression{financials.masterMissingCost.withoutPrice > 1 ? "s" : ""} sans prix</p> : <p>Toutes les impressions manquantes</p>}</div>
       <CustomSelect className="collection-dashboard-select" label="Valeur utilisée" value={dashboardPriceMode} onChange={(value) => setDashboardPriceMode(value as PriceMode)} options={[{ value: "low", label: "Prix minimum" }, { value: "trend", label: "Tendance Cardmarket" }, { value: "avg30", label: "Moyenne 30 jours" }]} />
     </section>
-    <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>À compléter</small><h2>Cartes manquantes</h2><p>Prépare ta liste d’achat et compare les prix en un coup d’œil.</p></div><strong>{missing}</strong><em>Voir la liste →</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>Déjà dans le classeur</small><h2>Cartes possédées</h2><p>Retrouve tes impressions classées et ta progression par set.</p></div><strong>{owned}</strong><em>Voir la liste →</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>Organisation</small><h2>Gérer mes cartes</h2><p>Ajoute, modifie ou retire le statut de chaque impression.</p></div><strong>{owned + missing}</strong><em>Gérer la collection →</em></Link></section>
+    <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>À compléter</small><h2>Cartes manquantes</h2><p>Prépare ta liste d’achat et compare les prix en un coup d’œil.</p></div><strong>{missing}</strong><em>Voir la liste →</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>Déjà dans le classeur</small><h2>Cartes possédées</h2><p>Retrouve tes impressions classées et ta progression par set.</p></div><strong>{owned}</strong><em>Voir la liste →</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>Organisation</small><h2>Gérer mes cartes</h2><p>Classe chaque impression comme possédée ou manquante.</p></div><strong>{masterSet.total}</strong><em>Gérer la collection →</em></Link></section>
     <CollectionBackupControls impressions={impressions} />
     <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, numberedSet: setNumbered, masterSet: setMaster, missing: setMissing, financials: setFinancials }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><div className="collection-set-metrics"><p>Set numéroté <strong>{setNumbered.owned} / {setNumbered.total}</strong> · {formatPercent(setNumbered.percentage)}</p><p>Master set <strong>{setMaster.owned} / {setMaster.total}</strong> · {formatPercent(setMaster.percentage)}</p></div><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><div className="collection-set-financial"><small>Valeur possédée <b>{formatPrice(setFinancials.ownedValue.total)}</b></small><small className="is-primary">Coût Set numéroté <b>{formatPrice(setFinancials.numberedMissingCost.total)}</b></small><small>Coût Master hors Signées <b>{formatPrice(setFinancials.unsignedMasterMissingCost.total)}</b></small><small className="is-absolute">Coût Master set <b>{formatPrice(setFinancials.masterMissingCost.total)}</b></small></div><i><b style={{ width: `${setMaster.percentage}%` }} /></i></Link>)}</div></section>
   </main> : <CollectionList view={view} impressions={impressions} focusSetCode={focusSetCode} />}<footer className="site-footer"><div><strong>Riftbound — Catalogue & prix</strong><p>Ta collection est mémorisée localement sur cet appareil.</p></div></footer></div>;

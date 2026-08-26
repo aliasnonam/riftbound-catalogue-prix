@@ -60,8 +60,19 @@ export function getCollectionPrice(
 export function getCollectionStatus(
   state: CollectionState,
   impressionId: string,
-): CollectionStatus | "unknown" {
-  return state[impressionId]?.status ?? "unknown";
+): CollectionStatus {
+  return state[impressionId]?.status === "owned" ? "owned" : "missing";
+}
+
+/**
+ * Source de vérité de Ma collection : seules les impressions explicitement
+ * possédées sont owned. Toute autre impression est implicitement manquante.
+ */
+export function isCollectionOwned(
+  state: CollectionState,
+  impressionId: string,
+) {
+  return getCollectionStatus(state, impressionId) === "owned";
 }
 
 export function isCollectionFoil(
@@ -69,7 +80,7 @@ export function isCollectionFoil(
   impression: CollectionImpression,
 ) {
   return impression.variant.pricing === "dual"
-    && getCollectionStatus(state, impression.impressionId) === "owned"
+    && isCollectionOwned(state, impression.impressionId)
     && state[impression.impressionId]?.foil === true;
 }
 
@@ -79,11 +90,10 @@ export function isCollectionFoil(
  */
 export function getCollectionFinancialPrice(
   impression: CollectionImpression,
-  status: CollectionStatus | "unknown",
+  status: CollectionStatus,
   isFoil: boolean,
   priceMode: PriceMode,
 ) {
-  if (status === "unknown") return null;
   const { variant } = impression;
 
   if (variant.pricing === "single") {
@@ -119,7 +129,7 @@ export function getCollectionProgress(
 ): CollectionProgress {
   const scoped = impressions.filter(predicate);
   const owned = scoped.filter(
-    (impression) => getCollectionStatus(state, impression.impressionId) === "owned",
+    (impression) => isCollectionOwned(state, impression.impressionId),
   ).length;
   return {
     owned,
@@ -152,9 +162,9 @@ export function getCollectionFinancialSummary(
 
 /**
  * Les objectifs financiers de la collection sont calculés à partir des
- * impressions physiques et de leurs propriétés structurelles. Les cartes
- * inconnues n'entrent jamais dans un coût : seules celles marquées missing le
- * font. La valeur possédée, elle, conserve toutes les impressions owned.
+ * impressions physiques et de leurs propriétés structurelles. Chaque
+ * impression non possédée est manquante par défaut. La valeur possédée,
+ * elle, conserve uniquement les impressions explicitement owned.
  */
 export function getCollectionFinancialTotals(
   impressions: CollectionImpression[],
@@ -184,17 +194,14 @@ export function getCollectionFinancialTotals(
 export function withCollectionStatus(
   state: CollectionState,
   impressionId: string,
-  status: CollectionStatus | null,
+  status: CollectionStatus,
 ): CollectionState {
   const next = { ...state };
-  if (!status) {
+  if (status === "missing") {
     delete next[impressionId];
     return next;
   }
-  next[impressionId] = {
-    status,
-    ...(status === "owned" && state[impressionId]?.foil ? { foil: true as const } : {}),
-  };
+  next[impressionId] = { status: "owned" };
   return next;
 }
 
@@ -240,13 +247,13 @@ function normalizeCollectionState(value: unknown): CollectionState {
     Object.entries(value).flatMap(([impressionId, entry]) => {
       if (!impressionId) return [];
       if (entry === "owned") return [[impressionId, { status: "owned" } satisfies CollectionEntry]];
-      if (entry === "missing") return [[impressionId, { status: "missing" } satisfies CollectionEntry]];
+      if (entry === "missing" || entry === "unknown") return [];
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-      const candidate = entry as Partial<CollectionEntry>;
-      if (candidate.status !== "owned" && candidate.status !== "missing") return [];
-      return [[impressionId, candidate.status === "owned" && candidate.foil === true
+      const candidate = entry as Partial<CollectionEntry> & { status?: unknown };
+      if (candidate.status !== "owned") return [];
+      return [[impressionId, candidate.foil === true
         ? { status: "owned", foil: true }
-        : { status: candidate.status }]];
+        : { status: "owned" }]];
     }),
   );
 }
@@ -255,6 +262,8 @@ export function createCollectionBackup(state: CollectionState, exportedAt = new 
   return {
     version: COLLECTION_BACKUP_VERSION,
     exportedAt,
+    // Les sauvegardes récentes restent compactes : seules les cartes owned
+    // sont nécessaires, toutes les autres étant manquantes par défaut.
     collection: normalizeCollectionState(state),
   };
 }

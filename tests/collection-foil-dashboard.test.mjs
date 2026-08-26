@@ -7,26 +7,26 @@ const hook = readFileSync(new URL("../hooks/use-collection.ts", import.meta.url)
 const page = readFileSync(new URL("../app/components/collection-page.tsx", import.meta.url), "utf8");
 
 test("keeps Foil as a secondary owned-only property", () => {
-  assert.match(collection, /status === "owned" && state\[impressionId\]\?\.foil/);
-  assert.match(collection, /status === "owned" && candidate\.foil === true/);
-  assert.match(collection, /status === "owned" && state\[impressionId\]\?\.foil/);
+  assert.match(collection, /isCollectionOwned\(state, impression\.impressionId\)/);
+  assert.match(collection, /candidate\.foil === true/);
+  assert.match(collection, /entry\.status !== "owned"/);
   assert.match(collection, /withCollectionFoil/);
   assert.match(hook, /impression\.variant\.pricing === "dual"/);
   assert.match(page, /status === "owned" && impression\.variant\.pricing === "dual"/);
 });
 
-test("clears Foil when a status is removed or changed to missing", () => {
-  assert.match(collection, /if \(!status\) \{/);
+test("clears Foil when an owned impression becomes missing", () => {
+  assert.match(collection, /if \(status === "missing"\) \{/);
   assert.match(collection, /delete next\[impressionId\]/);
-  assert.match(collection, /status === "owned" && state\[impressionId\]\?\.foil/);
-  assert.doesNotMatch(collection, /status, foil/);
+  assert.match(collection, /next\[impressionId\] = \{ status: "owned" \}/);
+  assert.doesNotMatch(collection, /status: "missing", foil/);
 });
 
 test("uses the exact Normal or Foil price selected by the collection state", () => {
   assert.match(collection, /getCollectionFinancialPrice/);
   assert.match(collection, /const useFoil = status === "owned" && isFoil/);
   assert.match(collection, /getActivePrice\(useFoil \? variant\.foil : variant\.normal, priceMode\)/);
-  assert.match(collection, /if \(status === "unknown"\) return null/);
+  assert.doesNotMatch(collection.slice(collection.indexOf("getCollectionFinancialPrice"), collection.indexOf("export type CollectionProgress")), /unknown/);
   assert.doesNotMatch(collection.slice(collection.indexOf("getCollectionFinancialPrice"), collection.indexOf("export type CollectionProgress")), /Math\.max/);
 });
 
