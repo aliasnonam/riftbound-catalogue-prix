@@ -105,6 +105,13 @@ export type CollectionFinancialSummary = {
   withoutPrice: number;
 };
 
+export type CollectionFinancialTotals = {
+  ownedValue: CollectionFinancialSummary;
+  numberedMissingCost: CollectionFinancialSummary;
+  unsignedMasterMissingCost: CollectionFinancialSummary;
+  masterMissingCost: CollectionFinancialSummary;
+};
+
 export function getCollectionProgress(
   impressions: CollectionImpression[],
   state: CollectionState,
@@ -126,8 +133,10 @@ export function getCollectionFinancialSummary(
   state: CollectionState,
   targetStatus: CollectionStatus,
   priceMode: PriceMode,
+  predicate: (impression: CollectionImpression) => boolean = () => true,
 ): CollectionFinancialSummary {
   return impressions.reduce<CollectionFinancialSummary>((summary, impression) => {
+    if (!predicate(impression)) return summary;
     const status = getCollectionStatus(state, impression.impressionId);
     if (status !== targetStatus) return summary;
     const price = getCollectionFinancialPrice(
@@ -139,6 +148,37 @@ export function getCollectionFinancialSummary(
     if (price === null) return { ...summary, withoutPrice: summary.withoutPrice + 1 };
     return { ...summary, total: summary.total + price };
   }, { total: 0, withoutPrice: 0 });
+}
+
+/**
+ * Les objectifs financiers de la collection sont calculés à partir des
+ * impressions physiques et de leurs propriétés structurelles. Les cartes
+ * inconnues n'entrent jamais dans un coût : seules celles marquées missing le
+ * font. La valeur possédée, elle, conserve toutes les impressions owned.
+ */
+export function getCollectionFinancialTotals(
+  impressions: CollectionImpression[],
+  state: CollectionState,
+  priceMode: PriceMode,
+): CollectionFinancialTotals {
+  return {
+    ownedValue: getCollectionFinancialSummary(impressions, state, "owned", priceMode),
+    numberedMissingCost: getCollectionFinancialSummary(
+      impressions,
+      state,
+      "missing",
+      priceMode,
+      (impression) => impression.row.isNumbered,
+    ),
+    unsignedMasterMissingCost: getCollectionFinancialSummary(
+      impressions,
+      state,
+      "missing",
+      priceMode,
+      (impression) => impression.variant.kind !== "signature",
+    ),
+    masterMissingCost: getCollectionFinancialSummary(impressions, state, "missing", priceMode),
+  };
 }
 
 export function withCollectionStatus(
