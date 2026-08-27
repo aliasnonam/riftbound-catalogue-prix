@@ -21,9 +21,10 @@ test("separates numbered, unsigned master, and absolute master missing costs", (
 
 test("renders the three completion costs in the dashboard and each set summary", () => {
   assert.match(page, /Valeur possédée/);
-  assert.match(page, /Coût Set numéroté/);
-  assert.match(page, /Coût Master hors Signées/);
-  assert.match(page, /Coût Master set/);
+  assert.match(page, /Restant pour le Set numéroté/);
+  assert.match(page, /Restant pour le Master hors Signées/);
+  assert.match(page, /Restant pour le Master set/);
+  assert.match(page, /Reste à acquérir/);
   assert.match(page, /setFinancials\.numberedMissingCost/);
   assert.match(page, /setFinancials\.unsignedMasterMissingCost/);
   assert.match(page, /setFinancials\.masterMissingCost/);

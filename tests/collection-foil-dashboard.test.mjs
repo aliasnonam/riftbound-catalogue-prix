@@ -37,9 +37,9 @@ test("derives numbered and master progress plus financial summaries from catalog
   assert.match(page, /Set numéroté/);
   assert.match(page, /Master set/);
   assert.match(page, /Valeur possédée/);
-  assert.match(page, /Coût Set numéroté/);
-  assert.match(page, /Coût Master hors Signées/);
-  assert.match(page, /Coût Master set/);
+  assert.match(page, /Restant pour le Set numéroté/);
+  assert.match(page, /Restant pour le Master hors Signées/);
+  assert.match(page, /Restant pour le Master set/);
   assert.match(page, /Valeur utilisée/);
   assert.match(page, /dashboardPriceMode/);
 });
