@@ -230,7 +230,7 @@ export function readCollectionState(raw: string | null): CollectionState {
 }
 
 function isCollectionState(value: unknown): value is CollectionState {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.entries(value).every(
+  return value !== null && typeof value === "object" && !Array.isArray(value) && Object.entries(value).every(
     ([impressionId, entry]) => typeof impressionId === "string"
       && impressionId.length > 0
       && Boolean(entry)
