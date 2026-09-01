@@ -268,6 +268,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [refreshState, setRefreshState] = useState<RefreshState>("idle");
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [cooldownClock, setCooldownClock] = useState(() => Date.now());
   const [heroPreview, setHeroPreview] = useState<HeroPreviewCard | null>(null);
   const [originsGalleryIndex, setOriginsGalleryIndex] = useState<number | null>(
@@ -313,6 +314,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       refreshResetTimerRef.current = null;
     }
     setRefreshState("loading");
+    setRefreshMessage(null);
 
     try {
       const response = await fetch(`/api/catalog/refresh?set=${setCode}`, {
@@ -331,6 +333,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
             : current,
         );
         setCooldownClock(Date.now());
+        setRefreshMessage(`Les prix viennent déjà d’être relevés. Prochaine actualisation à ${formatRefreshAvailability(result.refreshAvailableAt) ?? "plus tard"}.`);
         setRefreshState("idle");
         return;
       }
@@ -339,12 +342,14 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
       setPayload(result.payload);
       setError(null);
       setRefreshState("success");
+      setRefreshMessage("Prix Cardmarket actualisés et enregistrés sur cet appareil.");
       refreshResetTimerRef.current = window.setTimeout(() => {
         setRefreshState("idle");
         refreshResetTimerRef.current = null;
       }, 2500);
     } catch {
       setRefreshState("error");
+      setRefreshMessage("Actualisation impossible : les derniers prix enregistrés restent affichés. Vérifie ta connexion puis réessaie.");
       refreshResetTimerRef.current = window.setTimeout(() => {
         setRefreshState("idle");
         refreshResetTimerRef.current = null;
@@ -712,6 +717,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                           ? "Réessayer plus tard"
                           : "Actualiser"}
                 </button>
+                {refreshMessage ? <p className="refresh-message" role="status">{refreshMessage}</p> : null}
               </div>
             ) : null}
           </div>

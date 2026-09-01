@@ -32,7 +32,7 @@ window.fetch = async (input, init) => {
     try {
       const requestUrl = `${REMOTE_ORIGIN}/api/catalog/refresh?set=${setFromRequest(url)}`;
       const remote = Capacitor.isNativePlatform()
-        ? await CapacitorHttp.request({ url: requestUrl, method: "POST" })
+        ? await CapacitorHttp.post({ url: requestUrl })
         : await (async () => { const response = await nativeFetch(requestUrl, { method: "POST" }); return { status: response.status, data: await response.json() }; })();
       if (remote.status === 429) {
         let cooldown = remote.data as { error?: string; pricesUpdatedAt?: string; refreshAvailableAt?: string } | null;
