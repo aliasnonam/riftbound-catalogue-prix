@@ -34,7 +34,18 @@ window.fetch = async (input, init) => {
       const remote = Capacitor.isNativePlatform()
         ? await CapacitorHttp.request({ url: requestUrl, method: "POST" })
         : await (async () => { const response = await nativeFetch(requestUrl, { method: "POST" }); return { status: response.status, data: await response.json() }; })();
-      if (remote.status === 429) return Response.json(remote.data, { status: 429 });
+      if (remote.status === 429) {
+        let cooldown = remote.data as { error?: string; pricesUpdatedAt?: string; refreshAvailableAt?: string } | null;
+        if (!cooldown?.refreshAvailableAt && Capacitor.isNativePlatform()) {
+          const snapshot = await CapacitorHttp.get({ url: `${REMOTE_ORIGIN}/api/catalog?set=${setFromRequest(url)}` });
+          cooldown = snapshot.data as typeof cooldown;
+        }
+        return Response.json({
+          error: cooldown?.error ?? "Réessayer plus tard",
+          pricesUpdatedAt: cooldown?.pricesUpdatedAt ?? new Date().toISOString(),
+          refreshAvailableAt: cooldown?.refreshAvailableAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        }, { status: 429 });
+      }
       if (remote.status < 200 || remote.status >= 300 || !remote.data) throw new Error("remote refresh unavailable");
       const result = remote.data as { payload: CatalogPayload; refreshStatus: "updated" | "unchanged"; updatedProducts: number };
       await androidStorage.saveCatalog(result.payload);

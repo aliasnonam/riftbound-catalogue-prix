@@ -59,6 +59,13 @@ type CatalogCooldownResponse = {
   refreshAvailableAt: string;
 };
 
+function formatRefreshAvailability(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(date);
+}
+
 const PAGE_SIZE = 50;
 
 const VENDETTA_RIVAL_CARDS = {
@@ -511,6 +518,9 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
     payload?.refreshAvailableAt ?? null,
     cooldownClock,
   );
+  const refreshAvailableLabel = refreshBlocked
+    ? formatRefreshAvailability(payload?.refreshAvailableAt ?? null)
+    : null;
   const style = {
     "--set-accent": set.accent,
     "--set-accent-soft": set.accentSoft,
@@ -683,6 +693,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                       : "Dernier relevé disponible"}
                   </strong>
                   <span>{formatCardmarketSyncDate(payload.pricesUpdatedAt)}</span>
+                  {refreshAvailableLabel ? <small className="refresh-availability">Prochaine actualisation à {refreshAvailableLabel}</small> : null}
                 </div>
                 <button
                   className={`refresh-button is-${refreshState}${refreshBlocked ? " is-cooldown" : ""}`}
