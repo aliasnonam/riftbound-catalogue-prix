@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Riftbound Catalogue</string>
+    <string name="title_activity_main">Riftbound Catalogue</string>
+    <string name="package_name">com.aliasnonam.riftboundcatalogue</string>
+    <string name="custom_url_scheme">com.aliasnonam.riftboundcatalogue</string>
+</resources>

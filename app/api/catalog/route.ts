@@ -40,6 +40,9 @@ export async function GET(request: Request) {
   return NextResponse.json(payload, {
     headers: {
       "Cache-Control": "no-store",
+      // The Capacitor app only reads this public, snapshot-backed endpoint.
+      // It never receives Cardmarket credentials or D1 access.
+      "Access-Control-Allow-Origin": "*",
     },
   });
 }

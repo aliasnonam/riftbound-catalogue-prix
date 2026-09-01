@@ -13,15 +13,22 @@
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
-    "db:migrate:local": "set \"WRANGLER_LOG_PATH=.wrangler\\wrangler.log\" && wrangler d1 migrations apply DB --local --config wrangler.local.jsonc --persist-to .wrangler/state"
+    "db:migrate:local": "set \"WRANGLER_LOG_PATH=.wrangler\\wrangler.log\" && wrangler d1 migrations apply DB --local --config wrangler.local.jsonc --persist-to .wrangler/state",
+    "android:build": "vite build --config mobile/vite.config.ts",
+    "android:sync": "npm run android:build && cap sync android",
+    "android:open": "cap open android",
+    "android:apk": "npm run android:sync && node scripts/android-apk.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "7.4.3",
+    "@capacitor/core": "7.4.3",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "7.4.3",
     "@cloudflare/vite-plugin": "1.37.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
@@ -40,5 +47,5 @@
     "wrangler": "4.92.0"
   },
   "type": "module",
-  "displayName": "Riftbound \u2014 Catalogue & Prix"
+  "displayName": "Riftbound — Catalogue & Prix"
 }

@@ -1,4 +1,57 @@
-# vinext-starter
+# Riftbound — Catalogue & Prix
+
+## Android
+
+La version Android est une cible Capacitor distincte de la version web Vinext/Cloudflare. Elle embarque le catalogue et le dernier snapshot de prix présents dans `data/`, puis les conserve dans IndexedDB. Elle ne charge pas le site web distant dans une WebView : `mobile/` est un frontend Vite local copié dans l'APK.
+
+### Ce qui fonctionne hors connexion
+
+- le catalogue des quatre sets, la recherche et les filtres de set ;
+- les derniers prix inclus dans l'APK ou déjà synchronisés ;
+- la collection locale (cartes possédées/manquantes), persistée dans IndexedDB ;
+- les assets déjà présents dans `public/`.
+
+Les visuels de cartes dont l'URL est distante restent dépendants du réseau. L'application affiche toutefois le catalogue et les prix sans eux. Une synchronisation réussie garde le dernier catalogue reçu dans IndexedDB pour les ouvertures suivantes hors connexion.
+
+### Synchroniser les prix
+
+Le bouton **Actualiser les prix** appelle uniquement l'endpoint public en lecture du site (`/api/catalog`). Le rafraîchissement Cardmarket reste effectué côté Cloudflare/D1 : aucune clé ou secret n'est inclus dans l'APK. En cas d'absence de réseau ou d'échec, le cache local est conservé.
+
+### Premier setup développeur
+
+Il faut Node.js 22+, Java/JDK 21 et Android SDK pour générer l'APK sur un poste local. Après `npm ci`, le projet natif est déjà dans `android/`.
+
+### Générer l'APK localement
+
+```bash
+npm run android:apk
+```
+
+Cette commande construit `mobile/`, synchronise Capacitor et lance Gradle. L'APK debug est alors ici :
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Autres commandes utiles :
+
+```bash
+npm run android:build  # construit seulement le frontend Android
+npm run android:sync   # copie le frontend dans le projet Capacitor
+npm run android:open   # ouvre le projet Android dans Android Studio
+```
+
+### Générer et télécharger l'APK depuis GitHub
+
+Le workflow `.github/workflows/android-apk.yml` se lance à chaque push sur `main`, ou manuellement dans GitHub : **Actions** → **Android APK** → **Run workflow**. Une fois l'exécution avec coche verte terminée, ouvre-la puis télécharge l'artifact **Riftbound-Catalogue.apk**. GitHub fournit un ZIP : décompresse-le pour obtenir `app-debug.apk`.
+
+### Installer et mettre à jour
+
+Sur Android, ouvre l'APK téléchargée, autorise si nécessaire l'installation depuis le navigateur ou le gestionnaire de fichiers, puis installe-la. Le même `applicationId` (`com.aliasnonam.riftboundcatalogue`) et un `versionCode` stable permettent d'installer une future version par-dessus l'ancienne sans supprimer IndexedDB. N'efface pas les données de l'application dans les réglages Android.
+
+Une APK **debug** est signée automatiquement avec une clé de développement et convient à une installation privée. Une APK **release** devra être signée avec un keystore privé, conservé hors Git et injecté plus tard avec des GitHub Secrets. Aucun Play Store n'est configuré.
+
+---
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
