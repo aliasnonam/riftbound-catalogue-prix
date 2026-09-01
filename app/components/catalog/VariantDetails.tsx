@@ -89,9 +89,7 @@ export function VariantDetails({
                   <b className={`collection-status-badge is-${collectionStatus}`}>
                     {collectionStatus === "owned"
                       ? "✓ Possédée"
-                      : collectionStatus === "missing"
-                        ? "✕ Manquante"
-                        : "— Non renseignée"}
+                      : "✕ Manquante"}
                   </b>
                 </div>
               </div>

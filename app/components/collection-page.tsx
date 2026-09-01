@@ -13,7 +13,9 @@ import {
   collectionBackupFilename,
   createCollectionBackup,
   flattenCatalogPayload,
+  getCollectionFinancialTotals,
   getCollectionPrice,
+  getCollectionProgress,
   parseCollectionBackup,
   type CollectionImpression,
   type CollectionState,
@@ -24,17 +26,19 @@ import { useCollection } from "@/hooks/use-collection";
 
 export type CollectionView = "home" | "missing" | "owned" | "manage";
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
-type DisplayStatus = "owned" | "missing" | "unknown";
+type DisplayStatus = "owned" | "missing";
 type CollectionExclusion = "signature" | "overnumbered" | "alternate" | "Epic" | "Showcase";
 
 const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
 const RARITIES = ["Common", "Uncommon", "Rare", "Epic", "Showcase", "Ultimate", "Special"];
 const RARITY_LABELS: Record<string, string> = { Common: "Commune", Uncommon: "Peu commune", Rare: "Rare", Epic: "Épique", Showcase: "Showcase", Ultimate: "Ultimate", Special: "Spéciale" };
 const KIND_LABELS: Record<VariantKind, string> = { base: "Set", alternate: "Alternative", "crystal-rose": "Crystal Rose", overnumbered: "Outnumbered", signature: "Signée", other: "Spéciale" };
+const COLLECTION_BATCH_SIZE = 36;
 
 function formatPrice(value: number | null) { return value === null ? "—" : EURO.format(value); }
+function formatPercent(value: number) { return `${value.toLocaleString("fr-FR", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} %`; }
 function labelForVariant(variant: CatalogVariant) { return variant.kind === "base" ? (RARITY_LABELS[variant.rarity] ?? variant.rarity) : KIND_LABELS[variant.kind]; }
-function statusLabel(status: DisplayStatus) { return status === "owned" ? "✓ Possédée" : status === "missing" ? "✕ Manquante" : "— Non renseignée"; }
+function statusLabel(status: DisplayStatus) { return status === "owned" ? "✓ Possédée" : "✕ Manquante"; }
 function collectionHref(view: Exclude<CollectionView, "home">, focusSetCode?: SetCode) {
   const set = focusSetCode ? SETS.find((item) => item.code === focusSetCode) : undefined;
   return set ? `/collection/${set.slug}/${view}` : `/collection/${view}`;
@@ -61,10 +65,11 @@ function CollectionStatusBadge({ status }: { status: DisplayStatus }) {
 
 function ManageStatusActions({ impression, status }: { impression: CollectionImpression; status: DisplayStatus }) {
   const collection = useCollection();
+  const foilAvailable = status === "owned" && impression.variant.pricing === "dual";
+  const isFoil = collection.isFoil(impression);
   return <div className="collection-manage-actions" aria-label={`Gérer ${impression.variant.name}`}>
-    {status !== "owned" ? <button type="button" className="owned" onClick={() => collection.setOwned(impression.impressionId)}>Marquer comme possédée</button> : null}
-    {status !== "missing" ? <button type="button" className="missing" onClick={() => collection.setMissing(impression.impressionId)}>Marquer comme manquante</button> : null}
-    {status !== "unknown" ? <button type="button" className="clear" onClick={() => collection.clearStatus(impression.impressionId)}>Retirer le statut</button> : null}
+    {status === "missing" ? <button type="button" className="owned" onClick={() => collection.setOwned(impression.impressionId)}>Marquer comme possédée</button> : <button type="button" className="missing" onClick={() => collection.setMissing(impression.impressionId)}>Marquer comme manquante</button>}
+    {foilAvailable ? <button type="button" className={`foil${isFoil ? " is-active" : ""}`} aria-pressed={isFoil} aria-label={`${isFoil ? "Retirer" : "Indiquer"} la finition Foil pour ${impression.variant.name}`} onClick={() => collection.setFoil(impression, !isFoil)}>{isFoil ? "✦ Foil" : "☆ Foil"}</button> : null}
   </div>;
 }
 
@@ -102,11 +107,12 @@ function Filters({ focusSetCode, setFilter, onSetFilter, rarity, onRarity, kind,
   </>;
 }
 
-function ImpressionCard({ impression, priceMode, editable, onPreview }: { impression: CollectionImpression; priceMode: PriceMode; editable: boolean; onPreview: () => void }) {
+function ImpressionCard({ impression, priceMode, editable, onPreview, position }: { impression: CollectionImpression; priceMode: PriceMode; editable: boolean; onPreview: () => void; position?: number }) {
   const collection = useCollection();
   const { variant, row, setName } = impression;
   const status = collection.getStatus(impression.impressionId);
-  return <article className="collection-impression-card">
+  const isFoil = collection.isFoil(impression);
+  return <article className="collection-impression-card" data-collection-position={position}>
     <button className="collection-impression-preview" type="button" onClick={onPreview} disabled={!variant.imageUrl} aria-label={variant.imageUrl ? `Agrandir ${variant.name}` : undefined}>
       <span className="collection-impression-art">{variant.imageUrl ? <img src={variant.imageUrl} alt={`Carte ${variant.name}`} loading="lazy" /> : <span>◇</span>}</span>
       <span className="collection-impression-copy">
@@ -117,7 +123,7 @@ function ImpressionCard({ impression, priceMode, editable, onPreview }: { impres
       </span>
     </button>
     <footer className="collection-card-footer">
-      <CollectionStatusBadge status={status} />
+      <span className="collection-card-statuses"><CollectionStatusBadge status={status} />{!editable && isFoil ? <span className="collection-foil-badge">✦ Foil</span> : null}</span>
       {editable ? <ManageStatusActions impression={impression} status={status} /> : <a className="collection-cardmarket-link" href={row.cardmarketUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>{status === "missing" ? "Voir / acheter sur Cardmarket ↗" : "Voir sur Cardmarket ↗"}</a>}
     </footer>
   </article>;
@@ -166,7 +172,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     setPendingRestore(null);
     setMessage({
       kind: "success",
-      text: `Collection restaurée ✓ — ${next.restored} statut${next.restored > 1 ? "s" : ""} restauré${next.restored > 1 ? "s" : ""}${next.ignored ? ` · ${next.ignored} entrée${next.ignored > 1 ? "s" : ""} inconnue${next.ignored > 1 ? "s" : ""} ignorée${next.ignored > 1 ? "s" : ""}` : ""}`,
+      text: `Collection restaurée ✓ — ${next.restored} carte${next.restored > 1 ? "s" : ""} possédée${next.restored > 1 ? "s" : ""} restaurée${next.restored > 1 ? "s" : ""}${next.ignored ? ` · ${next.ignored} entrée${next.ignored > 1 ? "s" : ""} non reconnue${next.ignored > 1 ? "s" : ""} ignorée${next.ignored > 1 ? "s" : ""}` : ""}`,
     });
   };
 
@@ -204,7 +210,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     const entries = Object.entries(parsed.backup.collection);
     const accepted = entries.filter(([impressionId]) => knownImpressionIds.has(impressionId));
     if (!accepted.length && entries.length) {
-      setMessage({ kind: "error", text: "Aucun statut de cette sauvegarde ne correspond au catalogue actuel." });
+      setMessage({ kind: "error", text: "Aucune carte possédée de cette sauvegarde ne correspond au catalogue actuel." });
       return;
     }
     const next = { collection: Object.fromEntries(accepted), restored: accepted.length, ignored: entries.length - accepted.length };
@@ -216,7 +222,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     <div>
       <p className="eyebrow">Sauvegarde locale</p>
       <h2 id="collection-backup-title">Sauvegarde de la collection</h2>
-      <p>Sauvegarde ou restaure tes cartes possédées et manquantes sur cet appareil.</p>
+      <p>Sauvegarde ou restaure tes cartes possédées sur cet appareil. Les autres impressions restent manquantes par défaut.</p>
     </div>
     <div className="collection-backup-actions">
       <button type="button" onClick={exportBackup}>Exporter ma collection</button>
@@ -224,7 +230,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
       <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={(event) => { const [file] = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importBackup(file); }} />
     </div>
     {message ? <p className={`collection-backup-message is-${message.kind}`} role="status">{message.text}</p> : null}
-    {pendingRestore ? createPortal(<div className="collection-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingRestore(null); }}><section className="collection-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-restore-title"><p className="eyebrow">Sauvegarde locale</p><h2 id="collection-restore-title">Restaurer cette sauvegarde ?</h2><p>Cette opération remplacera les statuts actuellement enregistrés sur cet appareil.</p><p className="collection-confirm-summary"><strong>{pendingRestore.restored}</strong> statut{pendingRestore.restored > 1 ? "s" : ""} à restaurer{pendingRestore.ignored ? <> · <strong>{pendingRestore.ignored}</strong> entrée{pendingRestore.ignored > 1 ? "s" : ""} inconnue{pendingRestore.ignored > 1 ? "s" : ""} ignorée{pendingRestore.ignored > 1 ? "s" : ""}</> : null}</p><div><button type="button" className="secondary" onClick={() => setPendingRestore(null)}>Annuler</button><button type="button" onClick={() => restore(pendingRestore)}>Restaurer</button></div></section></div>, document.body) : null}
+    {pendingRestore ? createPortal(<div className="collection-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingRestore(null); }}><section className="collection-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-restore-title"><p className="eyebrow">Sauvegarde locale</p><h2 id="collection-restore-title">Restaurer cette sauvegarde ?</h2><p>Cette opération remplacera les cartes possédées actuellement enregistrées sur cet appareil.</p><p className="collection-confirm-summary"><strong>{pendingRestore.restored}</strong> carte{pendingRestore.restored > 1 ? "s" : ""} possédée{pendingRestore.restored > 1 ? "s" : ""} à restaurer{pendingRestore.ignored ? <> · <strong>{pendingRestore.ignored}</strong> entrée{pendingRestore.ignored > 1 ? "s" : ""} non reconnue{pendingRestore.ignored > 1 ? "s" : ""} ignorée{pendingRestore.ignored > 1 ? "s" : ""}</> : null}</p><div><button type="button" className="secondary" onClick={() => setPendingRestore(null)}>Annuler</button><button type="button" onClick={() => restore(pendingRestore)}>Restaurer</button></div></section></div>, document.body) : null}
   </section>;
 }
 
@@ -238,6 +244,11 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
   const [priceMode, setPriceMode] = useState<PriceMode>("low");
   const [exclusions, setExclusions] = useState<Set<CollectionExclusion>>(() => new Set());
   const [preview, setPreview] = useState<CollectionImpression | null>(null);
+  const [visibleCount, setVisibleCount] = useState(COLLECTION_BATCH_SIZE);
+  const [jumpInput, setJumpInput] = useState("");
+  const [pendingJumpIndex, setPendingJumpIndex] = useState<number | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const targetStatus = view === "manage" ? null : view;
   const focusedSet = focusSetCode ? SETS.find((set) => set.code === focusSetCode) : undefined;
   const scoped = useMemo(() => impressions.filter((impression) => !focusSetCode || impression.setCode === focusSetCode), [focusSetCode, impressions]);
@@ -257,29 +268,100 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
       return a.row.sortOrder - b.row.sortOrder || a.variant.number.localeCompare(b.variant.number, "fr");
     });
   }, [collection, exclusions, focusSetCode, kind, priceMode, query, rarity, scoped, setFilter, sort, targetStatus]);
+  const visibleImpressions = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const parsedJump = Number(jumpInput);
+  const isValidJump = Number.isInteger(parsedJump) && parsedJump >= 1 && parsedJump <= filtered.length;
+  const resetVisibleList = () => {
+    setVisibleCount(COLLECTION_BATCH_SIZE);
+    setPendingJumpIndex(null);
+  };
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || visibleCount >= filtered.length || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setVisibleCount((current) => Math.min(filtered.length, current + COLLECTION_BATCH_SIZE));
+    }, { rootMargin: "1000px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [filtered.length, visibleCount]);
+
+  useEffect(() => {
+    if (pendingJumpIndex === null || pendingJumpIndex >= visibleCount) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(`[data-collection-position="${pendingJumpIndex + 1}"]`);
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+      setPendingJumpIndex(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingJumpIndex, visibleCount]);
+
+  useEffect(() => {
+    const update = () => setShowBackToTop(window.scrollY > 560);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, []);
+
+  const jumpToPosition = () => {
+    if (!isValidJump) return;
+    const targetIndex = parsedJump - 1;
+    setPendingJumpIndex(targetIndex);
+    setVisibleCount((current) => Math.max(current, Math.min(filtered.length, Math.ceil(parsedJump / COLLECTION_BATCH_SIZE) * COLLECTION_BATCH_SIZE)));
+  };
   const title = view === "missing" ? "Cartes manquantes" : view === "owned" ? "Cartes possédées" : "Gérer mes cartes";
-  const description = view === "missing" ? "Les impressions qu’il reste à ajouter à ta collection." : view === "owned" ? "Les impressions déjà classées dans ta collection." : "Ajoute, modifie ou retire le statut de chaque impression.";
+  const description = view === "missing" ? "Les impressions qu’il reste à ajouter à ta collection." : view === "owned" ? "Les impressions déjà classées dans ta collection." : "Classe chaque impression comme possédée ou manquante.";
   return <main className="collection-shell">
     <Link className="collection-back-link" href="/collection">← Retour à Ma collection</Link>
     <div className="collection-heading"><div><p className="eyebrow" style={focusedSet ? { color: focusedSet.accent } : undefined}>{focusedSet ? `Ma collection · ${focusedSet.name}` : "Ma collection"}</p><h1>{title}</h1><p>{description}</p></div><div className="collection-count"><strong>{filtered.length}</strong><span>impression{filtered.length > 1 ? "s" : ""} affichée{filtered.length > 1 ? "s" : ""}</span></div></div>
     <nav className="collection-subnav" aria-label="Sections de ma collection"><Link href={collectionHref("missing", focusSetCode)} aria-current={view === "missing" ? "page" : undefined}>Cartes manquantes</Link><Link href={collectionHref("owned", focusSetCode)} aria-current={view === "owned" ? "page" : undefined}>Cartes possédées</Link><Link href={collectionHref("manage", focusSetCode)} aria-current={view === "manage" ? "page" : undefined}>Gérer mes cartes</Link></nav>
-    <label className="collection-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={focusedSet ? `Rechercher dans ${focusedSet.name}…` : "Rechercher une carte, un numéro, un set ou un domaine…"} /></label>
-    <Filters focusSetCode={focusSetCode} setFilter={setFilter} onSetFilter={setSetFilter} rarity={rarity} onRarity={setRarity} kind={kind} onKind={setKind} sort={sort} onSort={setSort} priceMode={priceMode} onPriceMode={setPriceMode} exclusions={exclusions} onToggleExclusion={(value) => setExclusions((current) => { const next = new Set(current); if (next.has(value)) next.delete(value); else next.add(value); return next; })} onClearExclusions={() => setExclusions(new Set())} />
-    <div className="collection-results"><strong>{filtered.length}</strong> impression{filtered.length > 1 ? "s" : ""}</div>
-    {filtered.length ? <div className="collection-grid">{filtered.map((impression) => <ImpressionCard key={impression.impressionId} impression={impression} priceMode={priceMode} editable={view === "manage"} onPreview={() => setPreview(impression)} />)}</div> : <div className="collection-empty"><span>◇</span><h2>{view === "manage" ? "Aucune carte ne correspond." : "Aucune impression dans cette liste."}</h2><p>{view === "manage" ? "Essaie avec une autre recherche ou un autre filtre." : "Gère tes cartes pour ajouter ou modifier un statut."}</p></div>}
+    <label className="collection-search"><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); resetVisibleList(); }} placeholder={focusedSet ? `Rechercher dans ${focusedSet.name}…` : "Rechercher une carte, un numéro, un set ou un domaine…"} /></label>
+    <Filters focusSetCode={focusSetCode} setFilter={setFilter} onSetFilter={(value) => { setSetFilter(value); resetVisibleList(); }} rarity={rarity} onRarity={(value) => { setRarity(value); resetVisibleList(); }} kind={kind} onKind={(value) => { setKind(value); resetVisibleList(); }} sort={sort} onSort={(value) => { setSort(value); resetVisibleList(); }} priceMode={priceMode} onPriceMode={(value) => { setPriceMode(value); resetVisibleList(); }} exclusions={exclusions} onToggleExclusion={(value) => { setExclusions((current) => { const next = new Set(current); if (next.has(value)) next.delete(value); else next.add(value); return next; }); resetVisibleList(); }} onClearExclusions={() => { setExclusions(new Set()); resetVisibleList(); }} />
+    <div className="collection-results-row"><div className="collection-results"><strong>{filtered.length}</strong> impression{filtered.length > 1 ? "s" : ""}</div>{filtered.length ? <form className="collection-jump" onSubmit={(event) => { event.preventDefault(); jumpToPosition(); }}><label htmlFor={`collection-jump-${view}-${focusSetCode ?? "all"}`}>Aller à</label><input id={`collection-jump-${view}-${focusSetCode ?? "all"}`} type="number" inputMode="numeric" min="1" max={filtered.length} step="1" value={jumpInput} onChange={(event) => setJumpInput(event.target.value)} aria-label={`Aller à une position entre 1 et ${filtered.length}`} /><span>/ {filtered.length}</span><button type="submit" aria-label="Aller à cette position" disabled={!isValidJump}>→</button></form> : null}</div>
+    {filtered.length ? <><div className="collection-grid">{visibleImpressions.map((impression, index) => <ImpressionCard key={impression.impressionId} impression={impression} priceMode={priceMode} editable={view === "manage"} position={index + 1} onPreview={() => setPreview(impression)} />)}</div>{visibleCount < filtered.length ? <div ref={sentinelRef} className="collection-infinite-sentinel" aria-hidden="true" /> : null}</> : <div className="collection-empty"><span>◇</span><h2>{view === "manage" ? "Aucune carte ne correspond." : "Aucune impression dans cette liste."}</h2><p>{view === "manage" ? "Essaie avec une autre recherche ou un autre filtre." : "Gère tes cartes pour ajouter ou modifier un statut."}</p></div>}
     {preview ? <CollectionCardDialog impression={preview} onClose={() => setPreview(null)} /> : null}
+    <button type="button" className={`collection-back-to-top${showBackToTop ? " is-visible" : ""}`} aria-label="Retour en haut" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>↑</button>
   </main>;
 }
 
 export function CollectionPage({ view, focusSetCode }: { view: CollectionView; focusSetCode?: SetCode }) {
   const { impressions, loading, error } = useAllImpressions();
   const collection = useCollection();
-  const stats = useMemo(() => SETS.map((set) => { const setItems = impressions.filter((item) => item.setCode === set.code); return { set, total: setItems.length, owned: setItems.filter((item) => collection.getStatus(item.impressionId) === "owned").length, missing: setItems.filter((item) => collection.getStatus(item.impressionId) === "missing").length }; }), [collection, impressions]);
-  const total = impressions.length; const owned = stats.reduce((sum, item) => sum + item.owned, 0); const missing = stats.reduce((sum, item) => sum + item.missing, 0);
+  const [dashboardPriceMode, setDashboardPriceMode] = useState<PriceMode>("low");
+  const dashboard = useMemo(() => {
+    const masterSet = getCollectionProgress(impressions, collection.state);
+    const numberedSet = getCollectionProgress(impressions, collection.state, (impression) => impression.row.isNumbered);
+    const financials = getCollectionFinancialTotals(impressions, collection.state, dashboardPriceMode);
+    const sets = SETS.map((set) => {
+      const setImpressions = impressions.filter((impression) => impression.setCode === set.code);
+      const setMaster = getCollectionProgress(setImpressions, collection.state);
+      return {
+        set,
+        masterSet: setMaster,
+        numberedSet: getCollectionProgress(setImpressions, collection.state, (impression) => impression.row.isNumbered),
+        missing: setMaster.total - setMaster.owned,
+        financials: getCollectionFinancialTotals(setImpressions, collection.state, dashboardPriceMode),
+      };
+    });
+    return { masterSet, numberedSet, financials, sets };
+  }, [collection, dashboardPriceMode, impressions]);
+  const { masterSet, numberedSet, financials, sets: stats } = dashboard;
+  const owned = masterSet.owned;
+  const missing = masterSet.total - masterSet.owned;
   return <div className="site-shell collection-site-shell"><SiteHeader />{loading ? <main className="collection-shell"><div className="collection-loading">Chargement de la collection…</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>La collection n’a pas pu être chargée.</h2><p>Réessaie dans un instant.</p></div></main> : view === "home" ? <main className="collection-shell">
-    <div className="collection-heading"><div><p className="eyebrow">Collection personnelle</p><h1>Ma collection</h1><p>Organise toutes tes impressions Riftbound, directement sur cet appareil.</p></div><div className="collection-progress"><strong>{owned} / {total}</strong><span>impressions possédées</span><i><b style={{ width: total ? `${Math.round((owned / total) * 100)}%` : "0%" }} /></i></div></div>
-    <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>À compléter</small><h2>Cartes manquantes</h2><p>Prépare ta liste d’achat et compare les prix en un coup d’œil.</p></div><strong>{missing}</strong><em>Voir la liste →</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>Déjà dans le classeur</small><h2>Cartes possédées</h2><p>Retrouve tes impressions classées et ta progression par set.</p></div><strong>{owned}</strong><em>Voir la liste →</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>Organisation</small><h2>Gérer mes cartes</h2><p>Ajoute, modifie ou retire le statut de chaque impression.</p></div><strong>{owned + missing}</strong><em>Gérer la collection →</em></Link></section>
+    <div className="collection-heading"><div><p className="eyebrow">Collection personnelle</p><h1>Ma collection</h1><p>Organise toutes tes impressions Riftbound, directement sur cet appareil.</p></div></div>
+    <section className="collection-dashboard" aria-label="Résumé de ma collection">
+      <div className="collection-dashboard-kpi"><span>Set numéroté</span><strong>{numberedSet.owned} / {numberedSet.total}</strong><p>{formatPercent(numberedSet.percentage)}</p><i><b style={{ width: `${numberedSet.percentage}%` }} /></i></div>
+      <div className="collection-dashboard-kpi"><span>Master set</span><strong>{masterSet.owned} / {masterSet.total}</strong><p>{formatPercent(masterSet.percentage)}</p><i><b style={{ width: `${masterSet.percentage}%` }} /></i></div>
+      <div className="collection-dashboard-kpi is-value"><span>Valeur possédée</span><strong>{formatPrice(financials.ownedValue.total)}</strong>{financials.ownedValue.withoutPrice ? <p>{financials.ownedValue.withoutPrice} impression{financials.ownedValue.withoutPrice > 1 ? "s" : ""} sans prix</p> : <p>Toutes les impressions possédées</p>}</div>
+      <div className="collection-dashboard-kpi is-value is-primary-cost"><span>Restant pour le Set numéroté</span><strong>{formatPrice(financials.numberedMissingCost.total)}</strong><p>Impressions non possédées du set numéroté{financials.numberedMissingCost.withoutPrice ? ` · ${financials.numberedMissingCost.withoutPrice} sans prix` : ""}</p></div>
+      <div className="collection-dashboard-kpi is-value"><span>Restant pour le Master hors Signées</span><strong>{formatPrice(financials.unsignedMasterMissingCost.total)}</strong><p>Impressions non possédées, Signées exclues{financials.unsignedMasterMissingCost.withoutPrice ? ` · ${financials.unsignedMasterMissingCost.withoutPrice} sans prix` : ""}</p></div>
+      <div className="collection-dashboard-kpi is-value is-absolute-cost"><span>Restant pour le Master set</span><strong>{formatPrice(financials.masterMissingCost.total)}</strong><p>Toutes les impressions non possédées{financials.masterMissingCost.withoutPrice ? ` · ${financials.masterMissingCost.withoutPrice} sans prix` : ""}</p></div>
+      <CustomSelect className="collection-dashboard-select" label="Valeur utilisée" value={dashboardPriceMode} onChange={(value) => setDashboardPriceMode(value as PriceMode)} options={[{ value: "low", label: "Prix minimum" }, { value: "trend", label: "Tendance Cardmarket" }, { value: "avg30", label: "Moyenne 30 jours" }]} />
+    </section>
+    <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>À compléter</small><h2>Cartes manquantes</h2><p>Prépare ta liste d’achat et compare les prix en un coup d’œil.</p></div><strong>{missing}</strong><em>Voir la liste →</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>Déjà dans le classeur</small><h2>Cartes possédées</h2><p>Retrouve tes impressions classées et ta progression par set.</p></div><strong>{owned}</strong><em>Voir la liste →</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>Organisation</small><h2>Gérer mes cartes</h2><p>Classe chaque impression comme possédée ou manquante.</p></div><strong>{masterSet.total}</strong><em>Gérer la collection →</em></Link></section>
     <CollectionBackupControls impressions={impressions} />
-    <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, total: setTotal, owned: setOwned, missing: setMissing }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><strong>{setOwned} / {setTotal}</strong><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><i><b style={{ width: setTotal ? `${Math.round((setOwned / setTotal) * 100)}%` : "0%" }} /></i></Link>)}</div></section>
+    <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, numberedSet: setNumbered, masterSet: setMaster, missing: setMissing, financials: setFinancials }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><div className="collection-set-metrics"><p>Set numéroté <strong>{setNumbered.owned} / {setNumbered.total}</strong> · {formatPercent(setNumbered.percentage)}</p><p>Master set <strong>{setMaster.owned} / {setMaster.total}</strong> · {formatPercent(setMaster.percentage)}</p></div><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><div className="collection-set-financial"><small>Valeur possédée <b>{formatPrice(setFinancials.ownedValue.total)}</b></small><p className="collection-set-financial-label">Reste à acquérir</p><small className="is-primary">Set numéroté <b>{formatPrice(setFinancials.numberedMissingCost.total)}</b></small><small>Master hors Signées <b>{formatPrice(setFinancials.unsignedMasterMissingCost.total)}</b></small><small className="is-absolute">Master set <b>{formatPrice(setFinancials.masterMissingCost.total)}</b></small></div><i><b style={{ width: `${setMaster.percentage}%` }} /></i></Link>)}</div></section>
   </main> : <CollectionList view={view} impressions={impressions} focusSetCode={focusSetCode} />}<footer className="site-footer"><div><strong>Riftbound — Catalogue & prix</strong><p>Ta collection est mémorisée localement sur cet appareil.</p></div></footer></div>;
 }

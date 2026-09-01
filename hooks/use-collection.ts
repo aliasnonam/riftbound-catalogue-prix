@@ -5,9 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   COLLECTION_CHANGE_EVENT,
   COLLECTION_STORAGE_KEY,
+  getCollectionStatus,
+  isCollectionOwned,
   readCollectionState,
+  withCollectionFoil,
+  withCollectionStatus,
   type CollectionState,
   type CollectionStatus,
+  type CollectionImpression,
 } from "@/lib/collection";
 
 export function useCollection() {
@@ -40,11 +45,18 @@ export function useCollection() {
     window.dispatchEvent(new CustomEvent(COLLECTION_CHANGE_EVENT, { detail: next }));
   }, []);
 
-  const setStatus = useCallback((impressionId: string, status: CollectionStatus | null) => {
+  const setStatus = useCallback((impressionId: string, status: CollectionStatus) => {
     setState((current) => {
-      const next = { ...current };
-      if (status) next[impressionId] = status;
-      else delete next[impressionId];
+      const next = withCollectionStatus(current, impressionId, status);
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const setFoil = useCallback((impression: CollectionImpression, foil: boolean) => {
+    setState((current) => {
+      const next = withCollectionFoil(current, impression, foil);
+      if (next === current) return current;
       persist(next);
       return next;
     });
@@ -58,10 +70,14 @@ export function useCollection() {
   return useMemo(() => ({
     ready,
     state,
-    getStatus: (impressionId: string) => state[impressionId] ?? "unknown",
+    getStatus: (impressionId: string) => getCollectionStatus(state, impressionId),
+    isOwned: (impressionId: string) => isCollectionOwned(state, impressionId),
+    isFoil: (impression: CollectionImpression) => impression.variant.pricing === "dual"
+      && isCollectionOwned(state, impression.impressionId)
+      && state[impression.impressionId]?.foil === true,
     setOwned: (impressionId: string) => setStatus(impressionId, "owned"),
     setMissing: (impressionId: string) => setStatus(impressionId, "missing"),
-    clearStatus: (impressionId: string) => setStatus(impressionId, null),
+    setFoil,
     restore,
-  }), [ready, restore, setStatus, state]);
+  }), [ready, restore, setFoil, setStatus, state]);
 }
