@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import rawCards from "@/data/card-catalog.json";
 import priceSnapshot from "@/data/cardmarket-prices.json";
 import productSnapshot from "@/data/cardmarket-products.json";
@@ -6,6 +7,7 @@ import { CatalogPage } from "@/app/components/catalog-page";
 import { CollectionPage, type CollectionView } from "@/app/components/collection-page";
 import { buildCatalog, type CatalogPayload, type PriceGuide, type RawCard } from "@/lib/catalog";
 import { SETS, type SetCode } from "@/lib/sets";
+import { androidStorage } from "./storage";
 
 const REMOTE_ORIGIN = "https://riftbound-catalogue-prix.hydegoody.chatgpt.site";
 const nativeFetch = window.fetch.bind(window);
@@ -22,12 +24,21 @@ function embeddedCatalog(code: SetCode): CatalogPayload {
 
 window.fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof Request ? input.url : input.toString(), window.location.href);
-  if (url.pathname === "/api/catalog" && (init?.method ?? "GET") === "GET") return Response.json(embeddedCatalog(setFromRequest(url)));
+  if (url.pathname === "/api/catalog" && (init?.method ?? "GET") === "GET") {
+    const code = setFromRequest(url);
+    return Response.json((await androidStorage.readCatalog(code)) ?? embeddedCatalog(code));
+  }
   if (url.pathname === "/api/catalog/refresh" && (init?.method ?? "GET") === "POST") {
     try {
-      const remote = await nativeFetch(`${REMOTE_ORIGIN}/api/catalog?set=${setFromRequest(url)}`);
-      if (!remote.ok) throw new Error("remote catalog unavailable");
-      return Response.json({ payload: await remote.json(), refreshStatus: "updated", updatedProducts: 0 });
+      const requestUrl = `${REMOTE_ORIGIN}/api/catalog/refresh?set=${setFromRequest(url)}`;
+      const remote = Capacitor.isNativePlatform()
+        ? await CapacitorHttp.request({ url: requestUrl, method: "POST" })
+        : await (async () => { const response = await nativeFetch(requestUrl, { method: "POST" }); return { status: response.status, data: await response.json() }; })();
+      if (remote.status === 429) return Response.json(remote.data, { status: 429 });
+      if (remote.status < 200 || remote.status >= 300 || !remote.data) throw new Error("remote refresh unavailable");
+      const result = remote.data as { payload: CatalogPayload; refreshStatus: "updated" | "unchanged"; updatedProducts: number };
+      await androidStorage.saveCatalog(result.payload);
+      return Response.json(result);
     } catch { return Response.json({ error: "Le guide Cardmarket reste disponible hors connexion." }, { status: 503 }); }
   }
   return nativeFetch(input, init);
