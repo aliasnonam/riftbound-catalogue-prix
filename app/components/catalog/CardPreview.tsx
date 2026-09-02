@@ -5,6 +5,8 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 
+import { CachedCardImage } from "@/app/components/offline-image";
+
 type PreviewPlacement = { left: number; top: number; width: number };
 type PreviewState = { mode: "hover"; placement: PreviewPlacement } | { mode: "dialog" };
 
@@ -70,10 +72,10 @@ export function CardPreviewThumb({ className, imageUrl, name }: { className: str
 
   if (!imageUrl || failed) return <div className={`${className} card-preview-unavailable`}><span aria-hidden="true">◇</span></div>;
   const previewLayer = preview ? createPortal(
-    preview.mode === "hover" ? <div className="card-preview-popover" style={preview.placement} role="img" aria-label={`Aperçu agrandi de la carte ${name}`}><img src={imageUrl} alt="" /></div> :
-      <div className="card-preview-backdrop" role="presentation" onPointerDown={() => closePreview(true)}><div className="card-preview-dialog" role="dialog" aria-modal="true" aria-label={`Aperçu agrandi de la carte ${name}`} onPointerDown={(event) => event.stopPropagation()}><button ref={closeRef} className="card-preview-close" type="button" aria-label="Fermer l’aperçu" onClick={() => closePreview(true)}>×</button><img src={imageUrl} alt={`Carte ${name}`} /><p>{name}</p></div></div>,
+    preview.mode === "hover" ? <div className="card-preview-popover" style={preview.placement} role="img" aria-label={`Aperçu agrandi de la carte ${name}`}><CachedCardImage src={imageUrl} alt="" /></div> :
+      <div className="card-preview-backdrop" role="presentation" onPointerDown={() => closePreview(true)}><div className="card-preview-dialog" role="dialog" aria-modal="true" aria-label={`Aperçu agrandi de la carte ${name}`} onPointerDown={(event) => event.stopPropagation()}><button ref={closeRef} className="card-preview-close" type="button" aria-label="Fermer l’aperçu" onClick={() => closePreview(true)}>×</button><CachedCardImage src={imageUrl} alt={`Carte ${name}`} /><p>{name}</p></div></div>,
     document.body,
   ) : null;
 
-  return <><button ref={triggerRef} className={`${className} card-preview-trigger`} type="button" aria-label={`Agrandir la carte ${name}`} title="Survoler pour agrandir · cliquer pour ouvrir" onPointerEnter={() => { if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onPointerLeave={() => setPreview((current) => current?.mode === "hover" ? null : current)} onFocus={() => { if (!suppressFocusPreviewRef.current && window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onBlur={() => setPreview((current) => current?.mode === "hover" ? null : current)} onClick={() => setPreview({ mode: "dialog" })}><img src={imageUrl} alt="" loading="lazy" onError={() => { setFailed(true); setPreview(null); }} /><span className="card-preview-icon" aria-hidden="true">⌕</span></button>{previewLayer}</>;
+  return <><button ref={triggerRef} className={`${className} card-preview-trigger`} type="button" aria-label={`Agrandir la carte ${name}`} title="Survoler pour agrandir · cliquer pour ouvrir" onPointerEnter={() => { if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onPointerLeave={() => setPreview((current) => current?.mode === "hover" ? null : current)} onFocus={() => { if (!suppressFocusPreviewRef.current && window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onBlur={() => setPreview((current) => current?.mode === "hover" ? null : current)} onClick={() => setPreview({ mode: "dialog" })}><CachedCardImage src={imageUrl} alt="" loading="lazy" onError={() => { setFailed(true); setPreview(null); }} /><span className="card-preview-icon" aria-hidden="true">⌕</span></button>{previewLayer}</>;
 }

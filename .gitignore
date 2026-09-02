@@ -42,5 +42,12 @@ next-env.d.ts
 /work/
 /mobile-dist/
 /android/.gradle/
+/android/.idea/
 /android/app/build/
 /android/local.properties
+
+# Android release signing credentials: strictly local, never commit.
+/android/keystore.properties
+/android/key.properties
+*.jks
+*.keystore

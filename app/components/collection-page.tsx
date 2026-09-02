@@ -7,6 +7,8 @@ import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { SiteHeader } from "@/app/components/site-header";
+import { CachedCardImage } from "@/app/components/offline-image";
+import { OfflineImageControls } from "@/app/components/offline-image-controls";
 import { CustomSelect } from "@/app/components/ui/custom-select";
 import type { CatalogPayload, CatalogVariant, VariantKind } from "@/lib/catalog";
 import {
@@ -114,7 +116,7 @@ function ImpressionCard({ impression, priceMode, editable, onPreview, position }
   const isFoil = collection.isFoil(impression);
   return <article className="collection-impression-card" data-collection-position={position}>
     <button className="collection-impression-preview" type="button" onClick={onPreview} disabled={!variant.imageUrl} aria-label={variant.imageUrl ? `Agrandir ${variant.name}` : undefined}>
-      <span className="collection-impression-art">{variant.imageUrl ? <img src={variant.imageUrl} alt={`Carte ${variant.name}`} loading="lazy" /> : <span>◇</span>}</span>
+      <span className="collection-impression-art">{variant.imageUrl ? <CachedCardImage src={variant.imageUrl} alt={`Carte ${variant.name}`} loading="lazy" /> : <span>◇</span>}</span>
       <span className="collection-impression-copy">
         <span className="collection-impression-kicker"><span>{setName}</span><b>{variant.number}</b><em>{labelForVariant(variant)}</em></span>
         <strong className="collection-impression-title">{variant.name}</strong>
@@ -139,7 +141,7 @@ function CollectionCardDialog({ impression, onClose }: { impression: CollectionI
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKeyDown); };
   }, [onClose]);
   if (!variant.imageUrl) return null;
-  return createPortal(<div className="card-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="card-preview-dialog" role="dialog" aria-modal="true" aria-label={`${variant.name}, ${variant.number}`}><button className="card-preview-close" type="button" aria-label="Fermer l’aperçu" onClick={onClose}>×</button><img src={variant.imageUrl} alt={`Carte ${variant.name}`} /><p>{setName} · {variant.number} · {labelForVariant(variant)} · {row.type}{row.domains.length ? ` · ${row.domains.join(" / ")}` : ""}</p></section></div>, document.body);
+  return createPortal(<div className="card-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="card-preview-dialog" role="dialog" aria-modal="true" aria-label={`${variant.name}, ${variant.number}`}><button className="card-preview-close" type="button" aria-label="Fermer l’aperçu" onClick={onClose}>×</button><CachedCardImage src={variant.imageUrl} alt={`Carte ${variant.name}`} /><p>{setName} · {variant.number} · {labelForVariant(variant)} · {row.type}{row.domains.length ? ` · ${row.domains.join(" / ")}` : ""}</p></section></div>, document.body);
 }
 
 type PendingCollectionRestore = {
@@ -325,7 +327,7 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
   </main>;
 }
 
-export function CollectionPage({ view, focusSetCode }: { view: CollectionView; focusSetCode?: SetCode }) {
+export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { view: CollectionView; focusSetCode?: SetCode; isMobileApp?: boolean }) {
   const { impressions, loading, error } = useAllImpressions();
   const collection = useCollection();
   const [dashboardPriceMode, setDashboardPriceMode] = useState<PriceMode>("low");
@@ -363,5 +365,6 @@ export function CollectionPage({ view, focusSetCode }: { view: CollectionView; f
     <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>À compléter</small><h2>Cartes manquantes</h2><p>Prépare ta liste d’achat et compare les prix en un coup d’œil.</p></div><strong>{missing}</strong><em>Voir la liste →</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>Déjà dans le classeur</small><h2>Cartes possédées</h2><p>Retrouve tes impressions classées et ta progression par set.</p></div><strong>{owned}</strong><em>Voir la liste →</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>Organisation</small><h2>Gérer mes cartes</h2><p>Classe chaque impression comme possédée ou manquante.</p></div><strong>{masterSet.total}</strong><em>Gérer la collection →</em></Link></section>
     <CollectionBackupControls impressions={impressions} />
     <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, numberedSet: setNumbered, masterSet: setMaster, missing: setMissing, financials: setFinancials }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><div className="collection-set-metrics"><p>Set numéroté <strong>{setNumbered.owned} / {setNumbered.total}</strong> · {formatPercent(setNumbered.percentage)}</p><p>Master set <strong>{setMaster.owned} / {setMaster.total}</strong> · {formatPercent(setMaster.percentage)}</p></div><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><div className="collection-set-financial"><small>Valeur possédée <b>{formatPrice(setFinancials.ownedValue.total)}</b></small><p className="collection-set-financial-label">Reste à acquérir</p><small className="is-primary">Set numéroté <b>{formatPrice(setFinancials.numberedMissingCost.total)}</b></small><small>Master hors Signées <b>{formatPrice(setFinancials.unsignedMasterMissingCost.total)}</b></small><small className="is-absolute">Master set <b>{formatPrice(setFinancials.masterMissingCost.total)}</b></small></div><i><b style={{ width: `${setMaster.percentage}%` }} /></i></Link>)}</div></section>
+    {isMobileApp ? <OfflineImageControls imageUrls={impressions.map((impression) => impression.variant.imageUrl)} /> : null}
   </main> : <CollectionList view={view} impressions={impressions} focusSetCode={focusSetCode} />}<footer className="site-footer"><div><strong>Riftbound — Catalogue & prix</strong><p>Ta collection est mémorisée localement sur cet appareil.</p><p>Ce site est un projet indépendant et n’est ni affilié, ni sponsorisé, ni approuvé par Riot Games, Riftbound ou Cardmarket.</p></div><p>Riftbound, League of Legends et Cardmarket appartiennent à leurs propriétaires respectifs.</p></footer></div>;
 }

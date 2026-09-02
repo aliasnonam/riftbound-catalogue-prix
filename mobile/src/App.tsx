@@ -277,7 +277,7 @@ function routeFor(pathname: string) {
   if (pathname.startsWith("/collection")) {
     const parts = pathname.split("/").filter(Boolean);
     const view = (["owned", "missing", "manage"].includes(parts.at(-1) ?? "") ? parts.at(-1) : "home") as CollectionView;
-    return <CollectionPage view={view} focusSetCode={SETS.find((set) => set.slug === parts.at(-2))?.code} />;
+    return <CollectionPage view={view} focusSetCode={SETS.find((set) => set.slug === parts.at(-2))?.code} isMobileApp />;
   }
   return <CatalogPage setCode={(pathname === "/" ? SETS[0] : SETS.find((set) => pathname === `/sets/${set.slug}`) ?? SETS[0]).code} />;
 }
