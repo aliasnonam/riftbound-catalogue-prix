@@ -22,11 +22,29 @@ function embeddedCatalog(code: SetCode): CatalogPayload {
   return buildCatalog({ set, cards: rawCards as RawCard[], products: productSnapshot.products, prices: priceSnapshot.priceGuides as PriceGuide[], pricesUpdatedAt: priceSnapshot.createdAt, productsUpdatedAt: productSnapshot.createdAt, refreshAvailableAt: null, sourceStatus: "snapshot" });
 }
 
+async function latestCatalogFromSite(code: SetCode): Promise<CatalogPayload | null> {
+  const url = `${REMOTE_ORIGIN}/api/catalog?set=${code}`;
+  try {
+    const remote = Capacitor.isNativePlatform()
+      ? await CapacitorHttp.get({ url, connectTimeout: 10_000, readTimeout: 20_000 })
+      : await (async () => { const response = await nativeFetch(url); return { status: response.status, data: await response.json() }; })();
+    if (remote.status < 200 || remote.status >= 300 || !remote.data) return null;
+    const payload = remote.data as CatalogPayload;
+    if (!Array.isArray(payload.rows) || !payload.pricesUpdatedAt) return null;
+    await androidStorage.saveCatalog(payload);
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 window.fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof Request ? input.url : input.toString(), window.location.href);
   if (url.pathname === "/api/catalog" && (init?.method ?? "GET") === "GET") {
     const code = setFromRequest(url);
-    return Response.json((await androidStorage.readCatalog(code)) ?? embeddedCatalog(code));
+    // The site owns price refreshes. Android always asks it for the latest
+    // published catalogue, then falls back to its persistent local cache.
+    return Response.json((await latestCatalogFromSite(code)) ?? (await androidStorage.readCatalog(code)) ?? embeddedCatalog(code));
   }
   if (url.pathname === "/api/catalog/refresh" && (init?.method ?? "GET") === "POST") {
     try {
