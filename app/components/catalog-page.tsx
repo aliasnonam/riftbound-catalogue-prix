@@ -416,6 +416,18 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
   }, [setCode]);
 
   useEffect(() => {
+    const receiveAndroidPriceUpdate = (event: Event) => {
+      const nextPayload = (event as CustomEvent<CatalogPayload>).detail;
+      if (nextPayload?.set.code !== setCode || !Array.isArray(nextPayload.rows)) return;
+      setPayload(nextPayload);
+      setError(null);
+      setLoading(false);
+    };
+    window.addEventListener("riftbound:catalog-updated", receiveAndroidPriceUpdate);
+    return () => window.removeEventListener("riftbound:catalog-updated", receiveAndroidPriceUpdate);
+  }, [setCode]);
+
+  useEffect(() => {
     const tabs = filterTabsRef.current;
     if (!tabs) return;
 
