@@ -22,6 +22,18 @@ function embeddedCatalog(code: SetCode): CatalogPayload {
   return buildCatalog({ set, cards: rawCards as RawCard[], products: productSnapshot.products, prices: priceSnapshot.priceGuides as PriceGuide[], pricesUpdatedAt: priceSnapshot.createdAt, productsUpdatedAt: productSnapshot.createdAt, refreshAvailableAt: null, sourceStatus: "snapshot" });
 }
 
+function isUsableCatalog(payload: unknown, code: SetCode): payload is CatalogPayload {
+  if (!payload || typeof payload !== "object") return false;
+  const catalog = payload as Partial<CatalogPayload>;
+  // A partial/error response must never replace a complete local catalogue.
+  // In particular, an empty saved response used to make the Android UI show
+  // "0 carte" while its loading placeholders stayed on screen.
+  return catalog.set?.code === code
+    && Array.isArray(catalog.rows)
+    && catalog.rows.length > 0
+    && typeof catalog.pricesUpdatedAt === "string";
+}
+
 async function latestCatalogFromSite(code: SetCode): Promise<CatalogPayload | null> {
   const url = `${REMOTE_ORIGIN}/api/catalog?set=${code}`;
   try {
@@ -29,8 +41,10 @@ async function latestCatalogFromSite(code: SetCode): Promise<CatalogPayload | nu
       ? await CapacitorHttp.get({ url, connectTimeout: 10_000, readTimeout: 20_000 })
       : await (async () => { const response = await nativeFetch(url); return { status: response.status, data: await response.json() }; })();
     if (remote.status < 200 || remote.status >= 300 || !remote.data) return null;
-    const payload = remote.data as CatalogPayload;
-    if (!Array.isArray(payload.rows) || !payload.pricesUpdatedAt) return null;
+    const payload = typeof remote.data === "string"
+      ? JSON.parse(remote.data) as unknown
+      : remote.data as unknown;
+    if (!isUsableCatalog(payload, code)) return null;
     await androidStorage.saveCatalog(payload);
     return payload;
   } catch {
@@ -44,7 +58,12 @@ window.fetch = async (input, init) => {
     const code = setFromRequest(url);
     // The site owns price refreshes. Android always asks it for the latest
     // published catalogue, then falls back to its persistent local cache.
-    return Response.json((await latestCatalogFromSite(code)) ?? (await androidStorage.readCatalog(code)) ?? embeddedCatalog(code));
+    const cached = await androidStorage.readCatalog(code);
+    return Response.json(
+      (await latestCatalogFromSite(code))
+      ?? (isUsableCatalog(cached, code) ? cached : null)
+      ?? embeddedCatalog(code),
+    );
   }
   if (url.pathname === "/api/catalog/refresh" && (init?.method ?? "GET") === "POST") {
     try {
