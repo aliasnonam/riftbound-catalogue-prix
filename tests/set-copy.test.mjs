@@ -29,3 +29,12 @@ test("keeps the long hero copy shrinkable and wrapped on mobile", () => {
     /@media \(max-width: 680px\)[\s\S]*\.hero-subtitle \{[^}]*max-width: 100%;[^}]*text-wrap: pretty;/,
   );
 });
+
+test("keeps the Origins hero copy readable in the narrow desktop range", () => {
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(
+    css,
+    /@media \(max-width: 1280px\)[\s\S]*\.set-hero--binder \{[^}]*display: block;[\s\S]*\.set-hero--binder \.hero-copy \{[^}]*max-width: 680px;/,
+  );
+});
