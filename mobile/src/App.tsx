@@ -297,15 +297,27 @@ function formatSyncDate(value: string) {
 
 function MobilePriceSyncStatus() {
   const [status, setStatus] = useState<PriceSyncStatus>(currentPriceSyncStatus);
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
     const receiveStatus = (event: Event) => {
       const next = (event as CustomEvent<PriceSyncStatus>).detail;
-      if (next) setStatus(next);
+      if (next) {
+        setStatus(next);
+        setVisible(true);
+      }
     };
     window.addEventListener("riftbound:price-sync-status", receiveStatus);
     return () => window.removeEventListener("riftbound:price-sync-status", receiveStatus);
   }, []);
+
+  useEffect(() => {
+    if (status.state === "syncing") return;
+    const timer = window.setTimeout(() => setVisible(false), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [status]);
+
+  if (!visible) return null;
 
   if (status.state === "syncing") {
     return (
