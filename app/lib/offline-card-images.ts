@@ -2,7 +2,12 @@ import { Capacitor } from "@capacitor/core";
 import { FileTransfer } from "@capacitor/file-transfer";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 
-const IMAGE_DIRECTORY = "riftbound-card-images";
+// A new directory makes the app discard the incomplete files created by the
+// first implementation. Each downloaded file is validated before it is used.
+const IMAGE_DIRECTORY = "riftbound-card-images-v2";
+const LEGACY_IMAGE_DIRECTORY = "riftbound-card-images";
+const MINIMUM_IMAGE_SIZE = 1024;
+const DOWNLOAD_ATTEMPTS = 3;
 
 function isRemoteImage(url: string) {
   return url.startsWith("https://") || url.startsWith("http://");
@@ -38,11 +43,35 @@ async function ensureDirectory() {
 
 async function hasOfflineImage(url: string) {
   try {
-    await Filesystem.stat({ path: imagePath(url), directory: Directory.Data });
-    return true;
+    const file = await Filesystem.stat({ path: imagePath(url), directory: Directory.Data });
+    return file.size >= MINIMUM_IMAGE_SIZE;
   } catch {
     return false;
   }
+}
+
+async function removeFile(url: string) {
+  try {
+    await Filesystem.deleteFile({ path: imagePath(url), directory: Directory.Data });
+  } catch {
+    // No previous partial file is present.
+  }
+}
+
+async function downloadImage(url: string) {
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+    await removeFile(url);
+    try {
+      const destination = await Filesystem.getUri({ path: imagePath(url), directory: Directory.Data });
+      await FileTransfer.downloadFile({ url, path: destination.uri, progress: false });
+      if (await hasOfflineImage(url)) return;
+    } catch {
+      // A transient network error is retried below.
+    }
+  }
+
+  await removeFile(url);
+  throw new Error("Image téléchargée incomplète.");
 }
 
 export function isNativeImageStorageAvailable() {
@@ -75,10 +104,7 @@ export async function downloadOfflineImages(urls: readonly string[], onProgress:
     while (nextIndex < urls.length) {
       const url = urls[nextIndex++];
       try {
-        if (!(await hasOfflineImage(url))) {
-          const destination = await Filesystem.getUri({ path: imagePath(url), directory: Directory.Data });
-          await FileTransfer.downloadFile({ url, path: destination.uri, progress: false });
-        }
+        if (!(await hasOfflineImage(url))) await downloadImage(url);
         downloaded += 1;
       } catch {
         failed += 1;
@@ -99,5 +125,11 @@ export async function clearOfflineImages() {
     await Filesystem.rmdir({ path: IMAGE_DIRECTORY, directory: Directory.Data, recursive: true });
   } catch {
     // The directory does not exist yet, so there is nothing to remove.
+  }
+
+  try {
+    await Filesystem.rmdir({ path: LEGACY_IMAGE_DIRECTORY, directory: Directory.Data, recursive: true });
+  } catch {
+    // The cache from version 1.4 may already have been removed.
   }
 }
