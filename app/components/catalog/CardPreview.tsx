@@ -1,7 +1,5 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 
@@ -29,11 +27,13 @@ function previewPlacement(rect: DOMRect): PreviewPlacement {
 }
 
 export function CardPreviewThumb({ className, imageUrl, name }: { className: string; imageUrl: string | null; name: string }) {
-  const [failed, setFailed] = useState(false);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const suppressFocusPreviewRef = useRef(false);
+
+  const failed = failedImageUrl === imageUrl;
 
   function openHoverPreview() {
     if (!imageUrl || failed || !triggerRef.current) return;
@@ -77,5 +77,5 @@ export function CardPreviewThumb({ className, imageUrl, name }: { className: str
     document.body,
   ) : null;
 
-  return <><button ref={triggerRef} className={`${className} card-preview-trigger`} type="button" aria-label={`Agrandir la carte ${name}`} title="Survoler pour agrandir · cliquer pour ouvrir" onPointerEnter={() => { if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onPointerLeave={() => setPreview((current) => current?.mode === "hover" ? null : current)} onFocus={() => { if (!suppressFocusPreviewRef.current && window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onBlur={() => setPreview((current) => current?.mode === "hover" ? null : current)} onClick={() => setPreview({ mode: "dialog" })}><CachedCardImage src={imageUrl} alt="" loading="lazy" onError={() => { setFailed(true); setPreview(null); }} /><span className="card-preview-icon" aria-hidden="true">⌕</span></button>{previewLayer}</>;
+  return <><button ref={triggerRef} className={`${className} card-preview-trigger`} type="button" aria-label={`Agrandir la carte ${name}`} title="Survoler pour agrandir · cliquer pour ouvrir" onPointerEnter={() => { if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onPointerLeave={() => setPreview((current) => current?.mode === "hover" ? null : current)} onFocus={() => { if (!suppressFocusPreviewRef.current && window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onBlur={() => setPreview((current) => current?.mode === "hover" ? null : current)} onClick={() => setPreview({ mode: "dialog" })}><CachedCardImage src={imageUrl} alt="" loading="lazy" onError={() => { setFailedImageUrl(imageUrl); setPreview(null); }} /><span className="card-preview-icon" aria-hidden="true">⌕</span></button>{previewLayer}</>;
 }
