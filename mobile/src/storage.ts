@@ -1,9 +1,16 @@
-import type { CatalogPayload } from "@/lib/catalog";
+import type { CatalogPayload, PriceGuide } from "@/lib/catalog";
 import type { CollectionState } from "@/lib/collection";
 
 const DATABASE = "riftbound-catalogue";
 const VERSION = 1;
 const STATE_KEY = "collection-state";
+const PRICE_CACHE_KEY = "site-price-guide";
+
+export type MobilePriceCache = {
+  updatedAt: string;
+  sourceStatus: "live" | "snapshot";
+  priceGuides: PriceGuide[];
+};
 
 type CacheRecord = { key: string; value: unknown; updatedAt: string };
 
@@ -47,4 +54,6 @@ export const androidStorage = {
   saveCollection: (state: CollectionState) => write(STATE_KEY, state),
   readCatalog: (setCode: string) => read<CatalogPayload>(`catalog:${setCode}`),
   saveCatalog: (payload: CatalogPayload) => write(`catalog:${payload.set.code}`, payload),
+  readPriceCache: () => read<MobilePriceCache>(PRICE_CACHE_KEY),
+  savePriceCache: (cache: MobilePriceCache) => write(PRICE_CACHE_KEY, cache),
 };
