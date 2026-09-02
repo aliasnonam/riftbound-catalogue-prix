@@ -853,11 +853,11 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
         <div>
           <strong>Riftbound — Catalogue & prix</strong>
           <p>
-            Projet de collection non officiel. Riftbound et League of Legends
-            appartiennent à Riot Games.
+            Ce site est un projet indépendant et n’est ni affilié, ni sponsorisé,
+            ni approuvé par Riot Games, Riftbound ou Cardmarket.
           </p>
         </div>
-        <p>Données de marché : guide public Cardmarket, actualisé quotidiennement.</p>
+        <p>Riftbound, League of Legends et Cardmarket appartiennent à leurs propriétaires respectifs.</p>
       </footer>
 
       {heroPreview ? (

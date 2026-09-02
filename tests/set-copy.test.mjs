@@ -38,3 +38,16 @@ test("keeps the Origins hero copy readable in the narrow desktop range", () => {
     /@media \(max-width: 1280px\)[\s\S]*\.set-hero--binder \{[^}]*display: block;[\s\S]*\.set-hero--binder \.hero-copy \{[^}]*max-width: 680px;/,
   );
 });
+
+test("keeps the Origins hero copy independent from a collapsed grid track", () => {
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(
+    css,
+    /\.set-hero--binder \{[^}]*grid-template-columns: minmax\(34rem, 1fr\) minmax\(460px, 42vw\);/s,
+  );
+  assert.match(
+    css,
+    /\.set-hero--binder \.hero-copy \{[^}]*min-width: min\(34rem, calc\(100vw - 44px\)\);/s,
+  );
+});

@@ -450,10 +450,14 @@ a { color: inherit; text-decoration: none; }
 
 .set-hero--binder {
   min-height: 590px;
-  grid-template-columns: minmax(0, 1fr) minmax(460px, 42vw);
+  grid-template-columns: minmax(34rem, 1fr) minmax(460px, 42vw);
   column-gap: clamp(32px, 4vw, 72px);
 }
-.set-hero--binder .hero-copy { max-width: 760px; }
+.set-hero--binder .hero-copy {
+  max-width: 760px;
+  /* The copy must never inherit a collapsed grid track on wide, scaled displays. */
+  min-width: min(34rem, calc(100vw - 44px));
+}
 .origins-binder-hero {
   position: relative;
   z-index: 2;
