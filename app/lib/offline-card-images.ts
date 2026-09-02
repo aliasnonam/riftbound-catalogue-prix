@@ -11,6 +11,34 @@ const DOWNLOAD_ATTEMPTS = 2;
 const DOWNLOAD_WORKERS = 1;
 const DOWNLOAD_TIMEOUT_MS = 15_000;
 
+export type OfflineImageDownloadState =
+  | { kind: "idle" }
+  | { kind: "downloading"; completed: number; total: number; downloaded: number; failed: number; available: number | null }
+  | { kind: "success"; downloaded: number; failed: number; available: number; total: number }
+  | { kind: "error"; message: string };
+
+let imageDownloadState: OfflineImageDownloadState = { kind: "idle" };
+let activeImageDownload: Promise<void> | null = null;
+const imageDownloadListeners = new Set<() => void>();
+
+function publishImageDownloadState(nextState: OfflineImageDownloadState) {
+  imageDownloadState = nextState;
+  imageDownloadListeners.forEach((listener) => listener());
+}
+
+export function getOfflineImageDownloadState() {
+  return imageDownloadState;
+}
+
+export function subscribeToOfflineImageDownload(listener: () => void) {
+  imageDownloadListeners.add(listener);
+  return () => imageDownloadListeners.delete(listener);
+}
+
+export function resetOfflineImageDownloadState() {
+  if (!activeImageDownload) publishImageDownloadState({ kind: "idle" });
+}
+
 function isRemoteImage(url: string) {
   return url.startsWith("https://") || url.startsWith("http://");
 }
@@ -98,7 +126,10 @@ export async function countOfflineImages(urls: readonly string[]) {
   return results.filter(Boolean).length;
 }
 
-export async function downloadOfflineImages(urls: readonly string[], onProgress: (completed: number) => void) {
+export async function downloadOfflineImages(
+  urls: readonly string[],
+  onProgress: (progress: { completed: number; downloaded: number; failed: number; newlySaved: number }) => void,
+) {
   if (!isNativeImageStorageAvailable()) {
     throw new Error("Le stockage hors ligne est uniquement disponible dans l'application Android.");
   }
@@ -107,18 +138,22 @@ export async function downloadOfflineImages(urls: readonly string[], onProgress:
   let completed = 0;
   let downloaded = 0;
   let failed = 0;
+  let newlySaved = 0;
   let nextIndex = 0;
   const downloadNext = async () => {
     while (nextIndex < urls.length) {
       const url = urls[nextIndex++];
       try {
-        if (!(await hasOfflineImage(url))) await downloadImage(url);
+        if (!(await hasOfflineImage(url))) {
+          await downloadImage(url);
+          newlySaved += 1;
+        }
         downloaded += 1;
       } catch {
         failed += 1;
       } finally {
         completed += 1;
-        onProgress(completed);
+        onProgress({ completed, downloaded, failed, newlySaved });
       }
     }
   };
@@ -126,7 +161,30 @@ export async function downloadOfflineImages(urls: readonly string[], onProgress:
   // The native Android transfer bridge is more reliable when requests are
   // serialized. A bad remote image can now only delay this queue by 15 seconds.
   await Promise.all(Array.from({ length: DOWNLOAD_WORKERS }, downloadNext));
-  return { downloaded, failed };
+  return { downloaded, failed, newlySaved };
+}
+
+export function startOfflineImagesDownload(urls: readonly string[]) {
+  if (activeImageDownload) return activeImageDownload;
+
+  publishImageDownloadState({ kind: "downloading", completed: 0, total: urls.length, downloaded: 0, failed: 0, available: null });
+  const run = async () => {
+    try {
+      const initialAvailable = await countOfflineImages(urls);
+      publishImageDownloadState({ kind: "downloading", completed: 0, total: urls.length, downloaded: 0, failed: 0, available: initialAvailable });
+      const result = await downloadOfflineImages(urls, (progress) => {
+        publishImageDownloadState({ kind: "downloading", ...progress, total: urls.length, available: initialAvailable + progress.newlySaved });
+      });
+      publishImageDownloadState({ kind: "success", downloaded: result.downloaded, failed: result.failed, available: initialAvailable + result.newlySaved, total: urls.length });
+    } catch {
+      publishImageDownloadState({ kind: "error", message: "Impossible de télécharger les images hors ligne." });
+    }
+  };
+
+  activeImageDownload = run().finally(() => {
+    activeImageDownload = null;
+  });
+  return activeImageDownload;
 }
 
 export async function clearOfflineImages() {
