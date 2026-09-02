@@ -28,9 +28,12 @@ function toMobilePrice(guide: PriceGuide): MobilePrice {
       avg30: guide.avg30,
     },
     foil: {
-      low: guide["low-foil"],
-      trend: guide["trend-foil"],
-      avg30: guide["avg30-foil"],
+      // Some price-guide records omit foil fields entirely. The mobile
+      // contract always exposes the three keys so one missing foil price
+      // cannot invalidate the whole synchronisation payload.
+      low: guide["low-foil"] ?? null,
+      trend: guide["trend-foil"] ?? null,
+      avg30: guide["avg30-foil"] ?? null,
     },
   };
 }
