@@ -44,6 +44,7 @@ next-env.d.ts
 /android/.gradle/
 /android/.idea/
 /android/app/build/
+/releases/
 /android/local.properties
 
 # Android release signing credentials: strictly local, never commit.

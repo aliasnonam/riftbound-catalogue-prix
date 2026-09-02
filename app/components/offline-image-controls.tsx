@@ -3,7 +3,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
 
-import { OFFLINE_IMAGE_CACHE } from "@/app/components/offline-image";
+import { clearOfflineImages, countOfflineImages, downloadOfflineImages } from "@/app/lib/offline-card-images";
 
 type DownloadState =
   | { kind: "idle" }
@@ -22,15 +22,23 @@ export function OfflineImageControls({ imageUrls }: { imageUrls: readonly (strin
   const [showWarning, setShowWarning] = useState(false);
 
   const refreshCachedCount = async () => {
-    if (typeof caches === "undefined") return;
-    const cache = await caches.open(OFFLINE_IMAGE_CACHE);
-    const keys = await cache.keys();
-    const knownUrls = new Set(urls);
-    setCachedCount(keys.filter((request) => knownUrls.has(request.url)).length);
+    setCachedCount(await countOfflineImages(urls));
   };
 
   useEffect(() => {
-    void refreshCachedCount().catch(() => setCachedCount(0));
+    let active = true;
+    void Promise.resolve()
+      .then(() => countOfflineImages(urls))
+      .then((count) => {
+        if (active) setCachedCount(count);
+      })
+      .catch(() => {
+        if (active) setCachedCount(0);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [urls]);
 
   const downloadImages = async () => {
@@ -41,36 +49,16 @@ export function OfflineImageControls({ imageUrls }: { imageUrls: readonly (strin
     }
 
     setState({ kind: "downloading", completed: 0, total: urls.length });
-    let nextIndex = 0;
-    let downloaded = 0;
-    let failed = 0;
-    const cache = await caches.open(OFFLINE_IMAGE_CACHE);
-
-    const downloadNext = async () => {
-      while (nextIndex < urls.length) {
-        const url = urls[nextIndex++];
-        try {
-          const response = await fetch(url, { cache: "no-store" });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          await cache.put(url, response);
-          downloaded += 1;
-        } catch {
-          failed += 1;
-        } finally {
-          const completed = downloaded + failed;
-          setState({ kind: "downloading", completed, total: urls.length });
-        }
-      }
-    };
-
-    await Promise.all(Array.from({ length: 4 }, downloadNext));
+    const { downloaded, failed } = await downloadOfflineImages(urls, (completed) => {
+      setState({ kind: "downloading", completed, total: urls.length });
+    });
     await refreshCachedCount();
     setState({ kind: "success", downloaded, failed });
   };
 
   const clearImages = async () => {
     try {
-      await caches.delete(OFFLINE_IMAGE_CACHE);
+      await clearOfflineImages();
       setCachedCount(0);
       setState({ kind: "idle" });
     } catch {
@@ -86,7 +74,7 @@ export function OfflineImageControls({ imageUrls }: { imageUrls: readonly (strin
       <p className="eyebrow">Mode hors ligne</p>
       <h2 id="offline-images-title">Images des cartes</h2>
       <p>Conserve les visuels sur cet appareil pour les consulter sans connexion.</p>
-      <small>{cachedCount ? `${imageCountLabel(cachedCount)} téléchargées sur ${imageCountLabel(urls.length)}.` : "Aucune image téléchargée sur cet appareil."}</small>
+      <small>Actuellement, {imageCountLabel(cachedCount)} sur {imageCountLabel(urls.length)} sont enregistrées pour le mode hors ligne.</small>
     </div>
     <div className="collection-offline-images-actions">
       <button type="button" onClick={() => setShowWarning(true)} disabled={isDownloading || !urls.length}>{isDownloading ? `Téléchargement… ${progress} %` : "Télécharger les images"}</button>
