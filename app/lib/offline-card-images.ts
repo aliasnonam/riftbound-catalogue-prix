@@ -7,7 +7,9 @@ import { Directory, Filesystem } from "@capacitor/filesystem";
 const IMAGE_DIRECTORY = "riftbound-card-images-v2";
 const LEGACY_IMAGE_DIRECTORY = "riftbound-card-images";
 const MINIMUM_IMAGE_SIZE = 1024;
-const DOWNLOAD_ATTEMPTS = 3;
+const DOWNLOAD_ATTEMPTS = 2;
+const DOWNLOAD_WORKERS = 1;
+const DOWNLOAD_TIMEOUT_MS = 15_000;
 
 function isRemoteImage(url: string) {
   return url.startsWith("https://") || url.startsWith("http://");
@@ -63,7 +65,13 @@ async function downloadImage(url: string) {
     await removeFile(url);
     try {
       const destination = await Filesystem.getUri({ path: imagePath(url), directory: Directory.Data });
-      await FileTransfer.downloadFile({ url, path: destination.uri, progress: false });
+      await FileTransfer.downloadFile({
+        url,
+        path: destination.uri,
+        progress: false,
+        connectTimeout: DOWNLOAD_TIMEOUT_MS,
+        readTimeout: DOWNLOAD_TIMEOUT_MS,
+      });
       if (await hasOfflineImage(url)) return;
     } catch {
       // A transient network error is retried below.
@@ -115,7 +123,9 @@ export async function downloadOfflineImages(urls: readonly string[], onProgress:
     }
   };
 
-  await Promise.all(Array.from({ length: 3 }, downloadNext));
+  // The native Android transfer bridge is more reliable when requests are
+  // serialized. A bad remote image can now only delay this queue by 15 seconds.
+  await Promise.all(Array.from({ length: DOWNLOAD_WORKERS }, downloadNext));
   return { downloaded, failed };
 }
 
