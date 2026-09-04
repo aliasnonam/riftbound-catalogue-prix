@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import { HeroCardArtwork } from "@/app/components/hero/HeroCardArtwork";
 import type { HeroPreviewCard } from "@/app/components/hero/types";
+import { useGalleryNavigation } from "@/app/components/galleries/use-gallery-navigation";
 
 export function OriginsGallery({
   cards,
@@ -15,17 +16,9 @@ export function OriginsGallery({
   initialIndex: number;
   onClose: () => void;
 }) {
-  const [index, setIndex] = useState(initialIndex);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const touchStartXRef = useRef<number | null>(null);
+  const { activeIndex: index, setActiveSlide, showPrevious, showNext, stagePointerHandlers } = useGalleryNavigation(cards.length, initialIndex);
   const card = cards[index];
-
-  const showPrevious = useCallback(() => {
-    setIndex((current) => (current === 0 ? cards.length - 1 : current - 1));
-  }, [cards.length]);
-  const showNext = useCallback(() => {
-    setIndex((current) => (current + 1) % cards.length);
-  }, [cards.length]);
 
   useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow;
@@ -64,16 +57,7 @@ export function OriginsGallery({
         </header>
         <div
           className="origins-gallery-stage"
-          onTouchStart={(event) => { touchStartXRef.current = event.touches[0]?.clientX ?? null; }}
-          onTouchEnd={(event) => {
-            const startX = touchStartXRef.current;
-            const endX = event.changedTouches[0]?.clientX;
-            touchStartXRef.current = null;
-            if (startX === null || endX === undefined) return;
-            const distance = endX - startX;
-            if (Math.abs(distance) < 44) return;
-            if (distance > 0) showPrevious(); else showNext();
-          }}
+          {...stagePointerHandlers}
         >
           <button className="origins-gallery-arrow origins-gallery-arrow--previous" type="button" aria-label="Carte précédente" onClick={showPrevious}>‹</button>
           <div className="origins-gallery-artwork" key={card.number}><HeroCardArtwork card={card} /></div>
@@ -83,7 +67,7 @@ export function OriginsGallery({
           <p><strong>{card.number}</strong><span>{card.name}</span></p>
           <div className="origins-gallery-progress" aria-label={`Carte ${index + 1} sur ${cards.length}`}>
             {cards.map((galleryCard, cardIndex) => (
-              <button className={cardIndex === index ? "is-active" : ""} type="button" aria-label={`Afficher ${galleryCard.number} ${galleryCard.name}`} aria-current={cardIndex === index ? "true" : undefined} onClick={() => setIndex(cardIndex)} key={galleryCard.number} />
+              <button className={cardIndex === index ? "is-active" : ""} type="button" aria-label={`Afficher ${galleryCard.number} ${galleryCard.name}`} aria-current={cardIndex === index ? "true" : undefined} onClick={() => setActiveSlide(cardIndex)} key={galleryCard.number} />
             ))}
           </div>
           <small>Flèches sur ordinateur · balayage horizontal sur mobile</small>

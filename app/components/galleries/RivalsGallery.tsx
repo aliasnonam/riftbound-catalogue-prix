@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 
 import { HeroCardArtwork } from "@/app/components/hero/HeroCardArtwork";
 import type { HeroPreviewCard, RivalDiptych } from "@/app/components/hero/types";
+import { useGalleryNavigation } from "@/app/components/galleries/use-gallery-navigation";
 
 export function RivalsGallery({
   catalogCards,
@@ -15,23 +16,20 @@ export function RivalsGallery({
   diptyches: readonly RivalDiptych[];
   onClose: () => void;
 }) {
-  const [index, setIndex] = useState(0);
   const [detailCard, setDetailCard] = useState<HeroPreviewCard | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const touchStartXRef = useRef<number | null>(null);
-  const suppressClickUntilRef = useRef(0);
+  const { activeIndex: index, setActiveSlide, showPrevious: movePrevious, showNext: moveNext, stagePointerHandlers } = useGalleryNavigation(diptyches.length);
   const diptych = diptyches[index];
 
   const showPrevious = useCallback(() => {
     setDetailCard(null);
-    setIndex((current) => (current === 0 ? diptyches.length - 1 : current - 1));
-  }, [diptyches.length]);
+    movePrevious();
+  }, [movePrevious]);
   const showNext = useCallback(() => {
     setDetailCard(null);
-    setIndex((current) => (current + 1) % diptyches.length);
-  }, [diptyches.length]);
+    moveNext();
+  }, [moveNext]);
   const openCard = useCallback((side: 0 | 1) => {
-    if (performance.now() < suppressClickUntilRef.current) return;
     const definition = diptych.cards[side];
     setDetailCard(catalogCards[definition.number] ?? {
       number: String(definition.number), name: definition.name, imageUrl: diptych.imageUrl,
@@ -71,16 +69,7 @@ export function RivalsGallery({
           </div>
         ) : (
           <>
-            <div className="rivals-gallery-stage" onTouchStart={(event) => { touchStartXRef.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => {
-              const startX = touchStartXRef.current;
-              const endX = event.changedTouches[0]?.clientX;
-              touchStartXRef.current = null;
-              if (startX === null || endX === undefined) return;
-              const distance = endX - startX;
-              if (Math.abs(distance) < 48) return;
-              suppressClickUntilRef.current = performance.now() + 450;
-              if (distance > 0) showPrevious(); else showNext();
-            }}>
+            <div className="rivals-gallery-stage" {...stagePointerHandlers}>
               <button className="rivals-gallery-arrow rivals-gallery-arrow--previous" type="button" aria-label="Diptyque précédent" onClick={showPrevious}>‹</button>
               <div className="rivals-gallery-slide" key={diptych.imageUrl}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -97,7 +86,7 @@ export function RivalsGallery({
               <p><strong>{index + 1} / {diptyches.length}</strong><span>{diptych.cards[0].name} / {diptych.cards[1].name}</span></p>
               <div className="rivals-gallery-progress" aria-label={`Navigation entre les ${diptyches.length} diptyques Rivals`}>
                 {diptyches.map((item, itemIndex) => (
-                  <button className={itemIndex === index ? "is-active" : ""} type="button" aria-label={`Afficher le diptyque ${itemIndex + 1} : ${item.cards[0].name} / ${item.cards[1].name}`} aria-current={itemIndex === index ? "true" : undefined} onClick={() => setIndex(itemIndex)} key={item.imageUrl} />
+                  <button className={itemIndex === index ? "is-active" : ""} type="button" aria-label={`Afficher le diptyque ${itemIndex + 1} : ${item.cards[0].name} / ${item.cards[1].name}`} aria-current={itemIndex === index ? "true" : undefined} onClick={() => setActiveSlide(itemIndex)} key={item.imageUrl} />
                 ))}
               </div>
               <small>Balaye horizontalement pour naviguer</small>
