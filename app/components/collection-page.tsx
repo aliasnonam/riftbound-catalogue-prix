@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Capacitor } from "@capacitor/core";
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { FilePicker } from "@capawesome/capacitor-file-picker";
+import { Share } from "@capacitor/share";
 
 import { SiteHeader } from "@/app/components/site-header";
 import { CachedCardImage } from "@/app/components/offline-image";
@@ -196,23 +197,19 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     const contents = JSON.stringify(backup, null, 2);
     const filename = collectionBackupFilename();
     if (Capacitor.isNativePlatform()) {
-      const writeBackup = async () => {
-        await Filesystem.writeFile({ path: filename, data: contents, directory: Directory.Documents, encoding: Encoding.UTF8, recursive: true });
-        const saved = await Filesystem.readFile({ path: filename, directory: Directory.Documents, encoding: Encoding.UTF8 });
-        if (typeof saved.data !== "string" || !parseCollectionBackup(saved.data).ok) throw new Error("invalid saved backup");
-      };
       try {
-        await writeBackup();
-        setMessage({ kind: "success", text: `Sauvegarde exportée dans Documents : ${filename}` });
+        // Le cache de l'application ne nécessite aucune permission de stockage Android.
+        // Le panneau système laisse ensuite l'utilisateur choisir Fichiers, Drive, etc.
+        const saved = await Filesystem.writeFile({ path: filename, data: contents, directory: Directory.Cache, encoding: Encoding.UTF8, recursive: true });
+        await Share.share({
+          title: "Exporter ma collection Riftbound",
+          text: "Sauvegarde de collection Riftbound",
+          files: [saved.uri],
+          dialogTitle: "Enregistrer ou partager la sauvegarde",
+        });
+        setMessage({ kind: "success", text: "Choisis Fichiers ou Drive dans le panneau Android pour enregistrer la sauvegarde JSON." });
       } catch {
-        try {
-          const permissions = await Filesystem.requestPermissions();
-          if (permissions.publicStorage !== "granted") throw new Error("documents permission denied");
-          await writeBackup();
-          setMessage({ kind: "success", text: `Sauvegarde exportée dans Documents : ${filename}` });
-        } catch {
-          setMessage({ kind: "error", text: "Impossible d’enregistrer la sauvegarde dans Documents. Autorise l’accès aux fichiers pour Riftbound puis réessaie." });
-        }
+        setMessage({ kind: "error", text: "Impossible de préparer la sauvegarde. Réessaie puis choisis Fichiers ou Drive dans le panneau Android." });
       }
       return;
     }
