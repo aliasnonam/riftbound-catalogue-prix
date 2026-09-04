@@ -293,7 +293,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/catalog?set=${setCode}`, {
+        const response = await fetch(`/api/catalog?set=${setCode}&lang=${language}`, {
           cache: "no-store",
         });
         if (!response.ok) throw new Error("Le catalogue n'a pas pu être chargé.");
@@ -309,7 +309,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
         setLoading(false);
       }
     },
-    [setCode],
+    [language, setCode],
   );
 
   const refreshCatalog = useCallback(async () => {
@@ -388,7 +388,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
       window.clearTimeout(refreshResetTimerRef.current);
       refreshResetTimerRef.current = null;
     }
-    fetch(`/api/catalog?set=${setCode}`, { cache: "no-store" })
+    fetch(`/api/catalog?set=${setCode}&lang=${language}`, { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error("Le catalogue n'a pas pu être chargé.");
         return response.json() as Promise<CatalogPayload>;
@@ -417,7 +417,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
         refreshResetTimerRef.current = null;
       }
     };
-  }, [setCode]);
+  }, [language, setCode]);
 
   useEffect(() => {
     const receiveAndroidPriceUpdate = (event: Event) => {

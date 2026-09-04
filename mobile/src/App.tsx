@@ -263,6 +263,16 @@ window.fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof Request ? input.url : input.toString(), window.location.href);
   if (url.pathname === "/api/catalog" && (init?.method ?? "GET") === "GET") {
     const code = setFromRequest(url);
+    if (url.searchParams.get("lang") === "fr") {
+      try {
+        const remote = Capacitor.isNativePlatform()
+          ? await CapacitorHttp.get({ url: `${REMOTE_ORIGIN}/api/catalog?set=${code}&lang=fr`, connectTimeout: 10_000, readTimeout: 20_000 })
+          : await (async () => { const response = await nativeFetch(`${REMOTE_ORIGIN}/api/catalog?set=${code}&lang=fr`, { cache: "no-store" }); return { status: response.status, data: await response.json() }; })();
+        if (remote.status >= 200 && remote.status < 300 && remote.data) return Response.json(typeof remote.data === "string" ? JSON.parse(remote.data) : remote.data);
+      } catch {
+        // The bundled English catalogue remains available offline.
+      }
+    }
     return Response.json(localCatalog(code));
   }
   if (url.pathname === "/api/catalog/refresh" && (init?.method ?? "GET") === "POST") {

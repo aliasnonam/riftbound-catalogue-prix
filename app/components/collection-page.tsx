@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Capacitor } from "@capacitor/core";
-import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 
 import { SiteHeader } from "@/app/components/site-header";
 import { CachedCardImage } from "@/app/components/offline-image";
@@ -188,7 +188,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     const filename = collectionBackupFilename();
     if (Capacitor.isNativePlatform()) {
       try {
-        await Filesystem.writeFile({ path: filename, data: contents, directory: Directory.Documents, recursive: true });
+        await Filesystem.writeFile({ path: filename, data: contents, directory: Directory.Documents, encoding: Encoding.UTF8, recursive: true });
         setMessage({ kind: "success", text: `Sauvegarde exportée dans Documents : ${filename}` });
       } catch {
         setMessage({ kind: "error", text: "Impossible d’enregistrer la sauvegarde dans Documents." });
