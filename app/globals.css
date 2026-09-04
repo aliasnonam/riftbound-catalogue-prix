@@ -1286,12 +1286,17 @@ a { color: inherit; text-decoration: none; }
   background: rgba(255,255,255,.13);
   cursor: pointer;
 }
-.origins-gallery-progress button:hover,
 .origins-gallery-progress button:focus-visible,
 .origins-gallery-progress button.is-active {
   background: var(--set-accent);
   box-shadow: 0 0 9px color-mix(in srgb, var(--set-accent) 65%, transparent);
   outline: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .origins-gallery-progress button:hover {
+    background: var(--set-accent);
+    box-shadow: 0 0 9px color-mix(in srgb, var(--set-accent) 65%, transparent);
+  }
 }
 .origins-gallery-footer small {
   grid-column: 1 / -1;
@@ -1516,12 +1521,17 @@ a { color: inherit; text-decoration: none; }
   background: rgba(255,255,255,.13);
   cursor: pointer;
 }
-.rivals-gallery-progress button:hover,
 .rivals-gallery-progress button:focus-visible,
 .rivals-gallery-progress button.is-active {
   background: var(--set-accent);
   box-shadow: 0 0 9px color-mix(in srgb, var(--set-accent) 65%, transparent);
   outline: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .rivals-gallery-progress button:hover {
+    background: var(--set-accent);
+    box-shadow: 0 0 9px color-mix(in srgb, var(--set-accent) 65%, transparent);
+  }
 }
 .rivals-card-detail {
   display: flex;

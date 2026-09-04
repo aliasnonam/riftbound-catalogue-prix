@@ -43,13 +43,15 @@ export function useGalleryNavigation(length: number, initialIndex = 0) {
   }, [length]);
 
   const onPointerDown = useCallback((event: PointerEvent<HTMLElement>) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
     pointerStartRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
   }, []);
 
   const onPointerUp = useCallback((event: PointerEvent<HTMLElement>) => {
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (!start || start.id !== event.pointerId) return;
 
     const distanceX = event.clientX - start.x;
@@ -63,8 +65,9 @@ export function useGalleryNavigation(length: number, initialIndex = 0) {
     if (distanceX > 0) showPrevious(); else showNext();
   }, [showNext, showPrevious]);
 
-  const onPointerCancel = useCallback(() => {
+  const onPointerCancel = useCallback((event: PointerEvent<HTMLElement>) => {
     pointerStartRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }, []);
 
   const onClickCapture = useCallback((event: MouseEvent<HTMLElement>) => {
