@@ -71,6 +71,17 @@ export const SET_BY_CODE = Object.fromEntries(
   SETS.map((set) => [set.code, set]),
 ) as Record<SetCode, SetDefinition>;
 
+const FRENCH_SET_NAMES: Record<SetCode, string> = {
+  OGN: "Origines",
+  SFD: "Armes spirituelles",
+  UNL: "Déchaînés",
+  VEN: "Vendetta",
+};
+
+export function getSetDisplayName(set: SetDefinition, language: "fr" | "en") {
+  return language === "fr" ? FRENCH_SET_NAMES[set.code] : set.name;
+}
+
 export function getSetBySlug(slug: string) {
   return SETS.find((set) => set.slug === slug);
 }

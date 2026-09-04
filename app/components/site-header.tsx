@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { getSetHref, SETS, type SetCode } from "@/lib/sets";
+import { getSetDisplayName, getSetHref, SETS, type SetCode } from "@/lib/sets";
 import { useSiteLanguage } from "@/app/lib/site-language";
 
 export function SiteHeader({ activeSetCode, showLanguageSwitcher = false }: { activeSetCode?: SetCode; showLanguageSwitcher?: boolean }) {
@@ -31,7 +31,7 @@ export function SiteHeader({ activeSetCode, showLanguageSwitcher = false }: { ac
     </Link>
     <div className="set-nav-wrap">
       <nav className="set-nav" ref={navRef} aria-label={language === "en" ? "Main navigation" : "Navigation principale"}>
-        {SETS.map((item) => <Link href={getSetHref(item.code)} key={item.code} aria-current={item.code === activeSetCode ? "page" : undefined}><span>{String(item.number).padStart(2, "0")}</span>{item.name}</Link>)}
+        {SETS.map((item) => <Link href={getSetHref(item.code)} key={item.code} aria-current={item.code === activeSetCode ? "page" : undefined}><span>{String(item.number).padStart(2, "0")}</span>{getSetDisplayName(item, language)}</Link>)}
         <span className="set-nav-separator" aria-hidden="true" />
         <Link className="collection-nav-link" href="/collection" aria-current={!activeSetCode ? "page" : undefined}><span aria-hidden="true">◇</span>{language === "en" ? "My collection" : "Ma collection"}</Link>
       </nav>

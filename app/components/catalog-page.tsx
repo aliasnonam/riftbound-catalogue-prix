@@ -24,6 +24,7 @@ import {
   type PriceMode,
 } from "@/lib/pricing";
 import {
+  getSetDisplayName,
   SET_BY_CODE,
   type SetCode,
 } from "@/lib/sets";
@@ -580,7 +581,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
             <p className="eyebrow">
               Set {String(set.number).padStart(2, "0")} <span>·</span> {set.code}
             </p>
-            <h1>{set.name}</h1>
+            <h1>{getSetDisplayName(set, language)}</h1>
             <p className="hero-subtitle">{set.subtitle}</p>
             <div className="hero-meta">
               <span>{en ? "Release" : "Sortie"} : {set.release}</span>
@@ -689,6 +690,8 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
             </div>
           )}
         </section>
+
+        {language === "fr" ? <aside className="catalog-language-note"><span aria-hidden="true">i</span><p><strong>Visuels des cartes en français</strong> Les scans français ne sont pas encore disponibles. Les cartes affichent donc temporairement leur visuel anglais officiel.</p></aside> : null}
 
         <section className="catalog-wrap" aria-labelledby="catalog-title">
           <div className="catalog-intro">

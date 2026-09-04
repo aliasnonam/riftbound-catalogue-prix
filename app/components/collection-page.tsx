@@ -5,6 +5,8 @@
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
 
 import { SiteHeader } from "@/app/components/site-header";
 import { CachedCardImage } from "@/app/components/offline-image";
@@ -180,13 +182,24 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     });
   };
 
-  const exportBackup = () => {
+  const exportBackup = async () => {
     const backup = createCollectionBackup(collection.state);
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const contents = JSON.stringify(backup, null, 2);
+    const filename = collectionBackupFilename();
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Filesystem.writeFile({ path: filename, data: contents, directory: Directory.Documents, recursive: true });
+        setMessage({ kind: "success", text: `Sauvegarde exportée dans Documents : ${filename}` });
+      } catch {
+        setMessage({ kind: "error", text: "Impossible d’enregistrer la sauvegarde dans Documents." });
+      }
+      return;
+    }
+    const blob = new Blob([contents], { type: "application/json" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = collectionBackupFilename();
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -229,7 +242,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
       <p>Sauvegarde ou restaure tes cartes possédées sur cet appareil. Les autres impressions restent manquantes par défaut.</p>
     </div>
     <div className="collection-backup-actions">
-      <button type="button" onClick={exportBackup}>Exporter ma collection</button>
+      <button type="button" onClick={() => { void exportBackup(); }}>Exporter ma collection</button>
       <button type="button" className="secondary" onClick={() => fileInputRef.current?.click()}>Importer ma collection</button>
       <button type="button" className="danger" onClick={() => setConfirmClear(true)}>Supprimer ma collection</button>
       <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={(event) => { const [file] = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importBackup(file); }} />
