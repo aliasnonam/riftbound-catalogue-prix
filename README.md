@@ -2,6 +2,16 @@
 
 ## Android
 
+### Scanner une carte
+
+Dans **Ma collection**, le bouton **Scanner une carte** est disponible uniquement dans l'APK Android. Il ouvre la caméra, lit localement la ligne imprimée telle que `SFD • 227* / 221` avec ML Kit, puis retrouve l'impression dans le catalogue déjà intégré à l'application. La photo n'est ni envoyée vers un service distant ni enregistrée dans la galerie, et chaque ajout à la collection nécessite une confirmation.
+
+Vérifier le parser avec :
+
+```bash
+npm run test:scan
+```
+
 La version Android est une cible Capacitor distincte de la version web Vinext/Cloudflare. Elle embarque le catalogue et le dernier snapshot de prix présents dans `data/`, puis les conserve dans IndexedDB. Elle ne charge pas le site web distant dans une WebView : `mobile/` est un frontend Vite local copié dans l'APK.
 
 ### Ce qui fonctionne hors connexion

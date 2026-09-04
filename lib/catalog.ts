@@ -7,6 +7,8 @@ import {
 export type RawCard = {
   id: string;
   name: string;
+  /** Display-only translation. Canonical `name` remains the market matching key. */
+  localized_name?: string;
   riftbound_id: string;
   collector_number: number;
   attributes: {
@@ -940,8 +942,9 @@ export function buildCatalog(args: {
       drafts.find((draft) => draft.card)?.card ??
       null;
     const fallbackProduct = productsForVariants[0] ?? null;
-    const fallbackName =
+    const fallbackMarketName =
       fallbackCard?.name ?? fallbackProduct?.name ?? "Carte sans nom";
+    const fallbackName = fallbackCard?.localized_name ?? fallbackMarketName;
     const rowName =
       definition?.name ??
       (isOriginsNumberedToken(fallbackCard, set)
@@ -961,7 +964,7 @@ export function buildCatalog(args: {
     const variants: CatalogVariant[] = drafts.map((draft, index) => {
       const product = productsForVariants[index] ?? null;
       const price = product ? priceByProduct.get(product.idProduct) : undefined;
-      const rawVariantName = draft.card?.name ?? product?.name ?? rowName;
+      const rawVariantName = draft.card?.localized_name ?? draft.card?.name ?? product?.name ?? rowName;
       const variantVisual = specialVariantVisual({
         set,
         key,
@@ -1051,7 +1054,7 @@ export function buildCatalog(args: {
         const originsToken = isOriginsNumberedToken(card, set);
         const splitName = originsToken
           ? cleanOriginsTokenName(card.name)
-          : displayName(card.name).replace(/\s+\d+\s+\(Buff\)$/i, "");
+          : displayName(card.localized_name ?? card.name).replace(/\s+\d+\s+\(Buff\)$/i, "");
         const splitType = originsToken ? "Token" : card.classification.type;
         const code = collectorCode(card, set);
         rows.push({
@@ -1064,7 +1067,7 @@ export function buildCatalog(args: {
           domains: card.classification.domain,
           imageUrl: variant.imageUrl,
           artist: card.media.artist,
-          cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(fallbackProduct?.name ?? splitName)}/Versions`,
+          cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(fallbackProduct?.name ?? card.name)}/Versions`,
           isExtra:
             splitType === "Rune" ||
             splitType === "Token" ||
@@ -1183,7 +1186,7 @@ export function buildCatalog(args: {
           representative.variant.artist ??
           representativeCard?.media.artist ??
           null,
-        cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(lineName)}/Versions`,
+        cardmarketUrl: `https://www.cardmarket.com/en/Riftbound/Cards/${cardmarketSlug(fallbackProduct?.name ?? fallbackCard?.name ?? lineName)}/Versions`,
         isExtra: lineIsExtra,
         isNumbered:
           line === "regular" &&

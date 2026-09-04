@@ -321,7 +321,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
     setRefreshMessage(null);
 
     try {
-      const response = await fetch(`/api/catalog/refresh?set=${setCode}`, {
+      const response = await fetch(`/api/catalog/refresh?set=${setCode}&lang=${language}`, {
         method: "POST",
         cache: "no-store",
       });
@@ -429,7 +429,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
     };
     window.addEventListener("riftbound:catalog-updated", receiveAndroidPriceUpdate);
     return () => window.removeEventListener("riftbound:catalog-updated", receiveAndroidPriceUpdate);
-  }, [setCode]);
+  }, [language, setCode]);
 
   useEffect(() => {
     const tabs = filterTabsRef.current;

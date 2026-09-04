@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import rawCards from "@/data/card-catalog.json";
+import { withFrenchCardNames } from "@/lib/french-card-names";
 import {
   buildCatalog,
   type RawCard,
@@ -17,6 +18,7 @@ function isSetCode(value: string): value is SetCode {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const requestedSet = (url.searchParams.get("set") ?? "OGN").toUpperCase();
+  const language = url.searchParams.get("lang");
 
   if (!isSetCode(requestedSet)) {
     return NextResponse.json(
@@ -28,7 +30,7 @@ export async function GET(request: Request) {
   const bundle = await getMarketBundle();
   const payload = buildCatalog({
     set: SET_BY_CODE[requestedSet],
-    cards: rawCards as RawCard[],
+    cards: language === "fr" ? withFrenchCardNames(rawCards as RawCard[]) : rawCards as RawCard[],
     products: bundle.products.products,
     prices: bundle.prices.priceGuides,
     pricesUpdatedAt: bundle.prices.createdAt,

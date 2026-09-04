@@ -3,6 +3,7 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import rawCards from "@/data/card-catalog.json";
 import priceSnapshot from "@/data/cardmarket-prices.json";
 import productSnapshot from "@/data/cardmarket-products.json";
+import { withFrenchCardNames } from "@/lib/french-card-names";
 import { CatalogPage } from "@/app/components/catalog-page";
 import { CollectionPage, type CollectionView } from "@/app/components/collection-page";
 import {
@@ -58,11 +59,15 @@ function setFromRequest(url: URL): SetCode {
   return SETS.some((set) => set.code === code) ? code : "OGN";
 }
 
-function localCatalog(code: SetCode): CatalogPayload {
+function currentLanguage() {
+  return window.localStorage.getItem("riftbound-site-language") === "en" ? "en" : "fr";
+}
+
+function localCatalog(code: SetCode, language = currentLanguage()): CatalogPayload {
   const set = SETS.find((item) => item.code === code)!;
   return buildCatalog({
     set,
-    cards: rawCards as RawCard[],
+    cards: language === "fr" ? withFrenchCardNames(rawCards as RawCard[]) : rawCards as RawCard[],
     products: productSnapshot.products,
     prices: activePriceData.priceGuides,
     pricesUpdatedAt: activePriceData.updatedAt,
@@ -263,17 +268,7 @@ window.fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof Request ? input.url : input.toString(), window.location.href);
   if (url.pathname === "/api/catalog" && (init?.method ?? "GET") === "GET") {
     const code = setFromRequest(url);
-    if (url.searchParams.get("lang") === "fr") {
-      try {
-        const remote = Capacitor.isNativePlatform()
-          ? await CapacitorHttp.get({ url: `${REMOTE_ORIGIN}/api/catalog?set=${code}&lang=fr`, connectTimeout: 10_000, readTimeout: 20_000 })
-          : await (async () => { const response = await nativeFetch(`${REMOTE_ORIGIN}/api/catalog?set=${code}&lang=fr`, { cache: "no-store" }); return { status: response.status, data: await response.json() }; })();
-        if (remote.status >= 200 && remote.status < 300 && remote.data) return Response.json(typeof remote.data === "string" ? JSON.parse(remote.data) : remote.data);
-      } catch {
-        // The bundled English catalogue remains available offline.
-      }
-    }
-    return Response.json(localCatalog(code));
+    return Response.json(localCatalog(code, url.searchParams.get("lang") === "en" ? "en" : "fr"));
   }
   if (url.pathname === "/api/catalog/refresh" && (init?.method ?? "GET") === "POST") {
     // Price refreshes are intentionally triggered manually on the website.

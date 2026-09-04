@@ -7,10 +7,12 @@ import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
+import { FilePicker } from "@capawesome/capacitor-file-picker";
 
 import { SiteHeader } from "@/app/components/site-header";
 import { CachedCardImage } from "@/app/components/offline-image";
 import { OfflineImageControls } from "@/app/components/offline-image-controls";
+import { CardScanner } from "@/app/components/card-scanner";
 import { CustomSelect } from "@/app/components/ui/custom-select";
 import type { CatalogPayload, CatalogVariant, VariantKind } from "@/lib/catalog";
 import {
@@ -50,17 +52,18 @@ function collectionHref(view: Exclude<CollectionView, "home">, focusSetCode?: Se
 }
 
 function useAllImpressions() {
+  const { language } = useSiteLanguage();
   const [payloads, setPayloads] = useState<CatalogPayload[]>([]);
   const [error, setError] = useState(false);
   useEffect(() => {
     let active = true;
     Promise.all(SETS.map(async (set) => {
-      const response = await fetch(`/api/catalog?set=${set.code}`, { cache: "no-store" });
+      const response = await fetch(`/api/catalog?set=${set.code}&lang=${language}`, { cache: "no-store" });
       if (!response.ok) throw new Error("catalogue unavailable");
       return response.json() as Promise<CatalogPayload>;
     })).then((next) => { if (active) setPayloads(next); }).catch(() => { if (active) setError(true); });
     return () => { active = false; };
-  }, []);
+  }, [language]);
   return { impressions: payloads.flatMap(flattenCatalogPayload), loading: !error && payloads.length !== SETS.length, error };
 }
 
@@ -153,6 +156,12 @@ type PendingCollectionRestore = {
   ignored: number;
 };
 
+function decodeBase64Utf8(value: string) {
+  const binary = window.atob(value.replace(/^data:[^,]+,/, ""));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 function CollectionBackupControls({ impressions }: { impressions: CollectionImpression[] }) {
   const collection = useCollection();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -219,15 +228,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     setMessage({ kind: "success", text: "Sauvegarde exportée ✓" });
   };
 
-  const importBackup = async (file?: File) => {
-    if (!file) return;
-    let raw: string;
-    try {
-      raw = await file.text();
-    } catch {
-      setMessage({ kind: "error", text: "Impossible d’importer ce fichier. La sauvegarde n’est pas valide." });
-      return;
-    }
+  const importBackupText = (raw: string) => {
     const parsed = parseCollectionBackup(raw);
     if (!parsed.ok) {
       setMessage({
@@ -247,6 +248,36 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     else restore(next);
   };
 
+  const importBackup = async (file?: File) => {
+    if (!file) return;
+    try {
+      importBackupText(await file.text());
+    } catch {
+      setMessage({ kind: "error", text: "Impossible d’importer ce fichier. La sauvegarde n’est pas valide." });
+    }
+  };
+
+  const openBackupPicker = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      fileInputRef.current?.click();
+      return;
+    }
+    try {
+      const result = await FilePicker.pickFiles({
+        types: ["application/json", "text/json"],
+        limit: 1,
+        readData: true,
+      });
+      const selected = result.files[0];
+      if (!selected) return;
+      if (!selected.data) throw new Error("file data unavailable");
+      importBackupText(decodeBase64Utf8(selected.data));
+    } catch (error) {
+      if (error instanceof Error && /cancel/i.test(error.message)) return;
+      setMessage({ kind: "error", text: "Impossible d’ouvrir ce fichier. Sélectionne une sauvegarde Riftbound au format JSON." });
+    }
+  };
+
   return <section className="collection-backup" aria-labelledby="collection-backup-title">
     <div>
       <p className="eyebrow">Sauvegarde locale</p>
@@ -255,7 +286,7 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     </div>
     <div className="collection-backup-actions">
       <button type="button" onClick={() => { void exportBackup(); }}>Exporter ma collection</button>
-      <button type="button" className="secondary" onClick={() => fileInputRef.current?.click()}>Importer ma collection</button>
+      <button type="button" className="secondary" onClick={() => { void openBackupPicker(); }}>Importer ma collection</button>
       <button type="button" className="danger" onClick={() => setConfirmClear(true)}>Supprimer ma collection</button>
       <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={(event) => { const [file] = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importBackup(file); }} />
     </div>
@@ -404,6 +435,7 @@ export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { vi
       <CustomSelect className="collection-dashboard-select" label="Valeur utilisée" value={dashboardPriceMode} onChange={(value) => setDashboardPriceMode(value as PriceMode)} options={[{ value: "low", label: "Prix minimum" }, { value: "trend", label: "Tendance Cardmarket" }, { value: "avg30", label: "Moyenne 30 jours" }]} />
     </section>
     <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>{en ? "To complete" : "À compléter"}</small><h2>{en ? "Missing cards" : "Cartes manquantes"}</h2><p>{en ? "Prepare your shopping list and compare prices at a glance." : "Prépare ta liste d’achat et compare les prix en un coup d’œil."}</p></div><strong>{missing}</strong><em>{en ? "View list →" : "Voir la liste →"}</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>{en ? "Already in binder" : "Déjà dans le classeur"}</small><h2>{en ? "Owned cards" : "Cartes possédées"}</h2><p>{en ? "Find your saved printings and progress per set." : "Retrouve tes impressions classées et ta progression par set."}</p></div><strong>{owned}</strong><em>{en ? "View list →" : "Voir la liste →"}</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>{en ? "Organisation" : "Organisation"}</small><h2>{en ? "Manage my cards" : "Gérer mes cartes"}</h2><p>{en ? "Mark each printing as owned or missing." : "Classe chaque impression comme possédée ou manquante."}</p></div><strong>{masterSet.total}</strong><em>{en ? "Manage collection →" : "Gérer la collection →"}</em></Link></section>
+    {isMobileApp ? <CardScanner impressions={impressions} /> : null}
     <CollectionBackupControls impressions={impressions} />
     <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, numberedSet: setNumbered, masterSet: setMaster, missing: setMissing, financials: setFinancials }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><div className="collection-set-metrics"><p>Set numéroté <strong>{setNumbered.owned} / {setNumbered.total}</strong> · {formatPercent(setNumbered.percentage)}</p><p>Master set <strong>{setMaster.owned} / {setMaster.total}</strong> · {formatPercent(setMaster.percentage)}</p></div><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><div className="collection-set-financial"><small>Valeur possédée <b>{formatPrice(setFinancials.ownedValue.total)}</b></small><p className="collection-set-financial-label">Reste à acquérir</p><small className="is-primary">Set numéroté <b>{formatPrice(setFinancials.numberedMissingCost.total)}</b></small><small>Master hors Signées <b>{formatPrice(setFinancials.unsignedMasterMissingCost.total)}</b></small><small className="is-absolute">Master set <b>{formatPrice(setFinancials.masterMissingCost.total)}</b></small></div><i><b style={{ width: `${setMaster.percentage}%` }} /></i></Link>)}</div></section>
     {isMobileApp ? <OfflineImageControls imageUrls={impressions.map((impression) => impression.variant.imageUrl)} /> : null}
