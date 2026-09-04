@@ -282,7 +282,7 @@ function routeFor(pathname: string) {
   const setCode = (pathname === "/" ? SETS[0] : SETS.find((set) => pathname === `/sets/${set.slug}`) ?? SETS[0]).code;
   // The mobile shell keeps the same React component while navigating between
   // sets. A key deliberately remounts the catalog so pagination returns to 50.
-  return <CatalogPage key={setCode} setCode={setCode} />;
+  return <CatalogPage key={setCode} setCode={setCode} isMobileApp />;
 }
 
 function formatSyncDate(value: string) {

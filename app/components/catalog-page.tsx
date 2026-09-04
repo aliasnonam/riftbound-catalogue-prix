@@ -28,6 +28,7 @@ import {
   type SetCode,
 } from "@/lib/sets";
 import { SiteHeader } from "@/app/components/site-header";
+import { useSiteLanguage } from "@/app/lib/site-language";
 import { CatalogRow } from "@/app/components/catalog/CatalogRow";
 import { CatalogFilters } from "@/app/components/catalog/CatalogFilters";
 import { StatsStrip } from "@/app/components/catalog/StatsStrip";
@@ -255,7 +256,9 @@ function CatalogLoading() {
   );
 }
 
-export function CatalogPage({ setCode }: { setCode: SetCode }) {
+export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode; isMobileApp?: boolean }) {
+  const { language } = useSiteLanguage();
+  const en = language === "en";
   const set = SET_BY_CODE[setCode];
   const [payload, setPayload] = useState<CatalogPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -568,7 +571,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
 
   return (
     <div className="site-shell" style={style}>
-      <SiteHeader activeSetCode={setCode} />
+      <SiteHeader activeSetCode={setCode} showLanguageSwitcher={isMobileApp} />
 
       <main>
         <section className={heroClassName}>
@@ -580,8 +583,8 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
             <h1>{set.name}</h1>
             <p className="hero-subtitle">{set.subtitle}</p>
             <div className="hero-meta">
-              <span>Sortie : {set.release}</span>
-              <span>{set.baseSize} cartes dans le set numéroté</span>
+              <span>{en ? "Release" : "Sortie"} : {set.release}</span>
+              <span>{set.baseSize} {en ? "cards in the numbered set" : "cartes dans le set numéroté"}</span>
             </div>
             {setCode === "VEN" || setCode === "OGN" ? (
               <button
@@ -594,8 +597,8 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 }}
               >
                 {setCode === "VEN"
-                  ? "Voir les 11 diptyques Rivals"
-                  : "Voir les 12 Outnumbered signées"} {" "}
+                  ? (en ? "View the 11 Rivals diptychs" : "Voir les 11 diptyques Rivals")
+                  : (en ? "View the 12 signed Outnumbered cards" : "Voir les 12 Outnumbered signées")} {" "}
                 <span aria-hidden="true">→</span>
               </button>
             ) : null}
@@ -690,11 +693,10 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
         <section className="catalog-wrap" aria-labelledby="catalog-title">
           <div className="catalog-intro">
             <div>
-              <p className="eyebrow">Catalogue dynamique</p>
-              <h2 id="catalog-title">Toutes les cartes, toutes les finitions</h2>
+              <p className="eyebrow">{en ? "Live catalogue" : "Catalogue dynamique"}</p>
+              <h2 id="catalog-title">{en ? "Every card, every finish" : "Toutes les cartes, toutes les finitions"}</h2>
               <p>
-                Normal, foil, alternatives, outnumbered et signatures réunis
-                sur une seule ligne par carte.
+                {en ? "Normal, foil, alternate, outnumbered and signed versions together on one line per card." : "Normal, foil, alternatives, outnumbered et signatures réunis sur une seule ligne par carte."}
               </p>
             </div>
             {payload ? (
@@ -706,7 +708,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                 <div>
                   <strong>
                     {payload.sourceStatus === "live"
-                      ? "Guide Cardmarket à jour"
+                      ? (en ? "Cardmarket guide is up to date" : "Guide Cardmarket à jour")
                       : "Dernier relevé disponible"}
                   </strong>
                   <span>{formatCardmarketSyncDate(payload.pricesUpdatedAt)}</span>
@@ -727,7 +729,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                         ? "Échec de l’actualisation"
                         : refreshBlocked
                           ? "Réessayer plus tard"
-                          : "Actualiser"}
+                          : (en ? "Refresh" : "Actualiser")}
                 </button>
                 {refreshMessage ? <p className="refresh-message" role="status">{refreshMessage}</p> : null}
               </div>
@@ -842,7 +844,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                       setVisibleCount((count) => count + PAGE_SIZE)
                     }
                   >
-                    Afficher {nextBatchCount} carte
+                    {en ? "Show" : "Afficher"} {nextBatchCount} {en ? "more card" : "carte"}
                     {nextBatchCount > 1 ? "s" : ""} de plus
                   </button>
                   <span className="load-separator" aria-hidden="true">
@@ -853,7 +855,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
                     type="button"
                     onClick={() => setVisibleCount(filteredRows.length)}
                   >
-                    Tout afficher
+                    {en ? "Show all" : "Tout afficher"}
                   </button>
                   <span className="load-progress">
                     {visibleRows.length} / {filteredRows.length}
@@ -866,7 +868,7 @@ export function CatalogPage({ setCode }: { setCode: SetCode }) {
           <aside className="pricing-note">
             <span aria-hidden="true">i</span>
             <div>
-              <strong>Comment lire les prix</strong>
+              <strong>{en ? "How to read prices" : "Comment lire les prix"}</strong>
               <p>
                 Le « prix minimum » provient du guide public Cardmarket et peut
                 inclure plusieurs langues ou états. Il ne garantit donc pas une

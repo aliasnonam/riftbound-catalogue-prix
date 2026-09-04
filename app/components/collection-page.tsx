@@ -25,6 +25,7 @@ import {
 import { getVariantFoilPrice, getVariantNormalPrice, type PriceMode } from "@/lib/pricing";
 import { SETS, type SetCode } from "@/lib/sets";
 import { useCollection } from "@/hooks/use-collection";
+import { useSiteLanguage } from "@/app/lib/site-language";
 
 export type CollectionView = "home" | "missing" | "owned" | "manage";
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
@@ -155,19 +156,20 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [pendingRestore, setPendingRestore] = useState<PendingCollectionRestore | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const knownImpressionIds = useMemo(() => new Set(impressions.map((impression) => impression.impressionId)), [impressions]);
 
   useEffect(() => {
-    if (!pendingRestore) return;
+    if (!pendingRestore && !confirmClear) return;
     const previousOverflow = document.body.style.overflow;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setPendingRestore(null); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { setPendingRestore(null); setConfirmClear(false); } };
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [pendingRestore]);
+  }, [confirmClear, pendingRestore]);
 
   const restore = (next: PendingCollectionRestore) => {
     collection.restore(next.collection);
@@ -229,15 +231,19 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     <div className="collection-backup-actions">
       <button type="button" onClick={exportBackup}>Exporter ma collection</button>
       <button type="button" className="secondary" onClick={() => fileInputRef.current?.click()}>Importer ma collection</button>
+      <button type="button" className="danger" onClick={() => setConfirmClear(true)}>Supprimer ma collection</button>
       <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={(event) => { const [file] = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importBackup(file); }} />
     </div>
     {message ? <p className={`collection-backup-message is-${message.kind}`} role="status">{message.text}</p> : null}
     {pendingRestore ? createPortal(<div className="collection-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingRestore(null); }}><section className="collection-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-restore-title"><p className="eyebrow">Sauvegarde locale</p><h2 id="collection-restore-title">Restaurer cette sauvegarde ?</h2><p>Cette opération remplacera les cartes possédées actuellement enregistrées sur cet appareil.</p><p className="collection-confirm-summary"><strong>{pendingRestore.restored}</strong> carte{pendingRestore.restored > 1 ? "s" : ""} possédée{pendingRestore.restored > 1 ? "s" : ""} à restaurer{pendingRestore.ignored ? <> · <strong>{pendingRestore.ignored}</strong> entrée{pendingRestore.ignored > 1 ? "s" : ""} non reconnue{pendingRestore.ignored > 1 ? "s" : ""} ignorée{pendingRestore.ignored > 1 ? "s" : ""}</> : null}</p><div><button type="button" className="secondary" onClick={() => setPendingRestore(null)}>Annuler</button><button type="button" onClick={() => restore(pendingRestore)}>Restaurer</button></div></section></div>, document.body) : null}
+    {confirmClear ? createPortal(<div className="collection-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmClear(false); }}><section className="collection-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-clear-title"><p className="eyebrow">Collection locale</p><h2 id="collection-clear-title">Supprimer toute la collection ?</h2><p>Toutes les cartes marquées comme possédées seront retirées de cet appareil. Cette action est irréversible sans fichier de sauvegarde.</p><div><button type="button" className="secondary" onClick={() => setConfirmClear(false)}>Annuler</button><button type="button" className="danger" onClick={() => { collection.clear(); setConfirmClear(false); setMessage({ kind: "success", text: "Collection supprimée." }); }}>Supprimer</button></div></section></div>, document.body) : null}
   </section>;
 }
 
 function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<CollectionView, "home">; impressions: CollectionImpression[]; focusSetCode?: SetCode }) {
   const collection = useCollection();
+  const { language } = useSiteLanguage();
+  const en = language === "en";
   const [query, setQuery] = useState("");
   const [setFilter, setSetFilter] = useState<"all" | SetCode>(focusSetCode ?? "all");
   const [rarity, setRarity] = useState("all");
@@ -248,6 +254,8 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
   const [preview, setPreview] = useState<CollectionImpression | null>(null);
   const [visibleCount, setVisibleCount] = useState(COLLECTION_BATCH_SIZE);
   const [jumpInput, setJumpInput] = useState("");
+  const [jumpSetCode, setJumpSetCode] = useState<"all" | SetCode>(focusSetCode ?? "all");
+  const [manageStatus, setManageStatus] = useState<"all" | DisplayStatus>("all");
   const [pendingJumpIndex, setPendingJumpIndex] = useState<number | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -258,6 +266,7 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
     const normalized = query.trim().toLocaleLowerCase("fr");
     return scoped.filter((impression) => {
       if (targetStatus && collection.getStatus(impression.impressionId) !== targetStatus) return false;
+      if (!targetStatus && manageStatus !== "all" && collection.getStatus(impression.impressionId) !== manageStatus) return false;
       if (!focusSetCode && setFilter !== "all" && impression.setCode !== setFilter) return false;
       if (rarity !== "all" && impression.variant.rarity !== rarity) return false;
       if (kind !== "all" && impression.variant.kind !== kind) return false;
@@ -269,10 +278,14 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
       if (sort === "price-desc" || sort === "price-asc") { const aPrice = getCollectionPrice(a, priceMode); const bPrice = getCollectionPrice(b, priceMode); if (aPrice === null) return 1; if (bPrice === null) return -1; return sort === "price-desc" ? bPrice - aPrice : aPrice - bPrice; }
       return a.row.sortOrder - b.row.sortOrder || a.variant.number.localeCompare(b.variant.number, "fr");
     });
-  }, [collection, exclusions, focusSetCode, kind, priceMode, query, rarity, scoped, setFilter, sort, targetStatus]);
+  }, [collection, exclusions, focusSetCode, kind, manageStatus, priceMode, query, rarity, scoped, setFilter, sort, targetStatus]);
   const visibleImpressions = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  const parsedJump = Number(jumpInput);
-  const isValidJump = Number.isInteger(parsedJump) && parsedJump >= 1 && parsedJump <= filtered.length;
+  const normalizedJump = jumpInput.trim().toLowerCase().replace(/^0+(?=\d)/, "");
+  const jumpTargetIndex = normalizedJump ? filtered.findIndex((impression) => {
+    const cardNumber = impression.variant.number.trim().toLowerCase().replace(/^0+(?=\d)/, "");
+    return (jumpSetCode === "all" || impression.setCode === jumpSetCode) && cardNumber === normalizedJump;
+  }) : -1;
+  const isValidJump = jumpTargetIndex >= 0;
   const resetVisibleList = () => {
     setVisibleCount(COLLECTION_BATCH_SIZE);
     setPendingJumpIndex(null);
@@ -308,19 +321,20 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
 
   const jumpToPosition = () => {
     if (!isValidJump) return;
-    const targetIndex = parsedJump - 1;
+    const targetIndex = jumpTargetIndex;
     setPendingJumpIndex(targetIndex);
-    setVisibleCount((current) => Math.max(current, Math.min(filtered.length, Math.ceil(parsedJump / COLLECTION_BATCH_SIZE) * COLLECTION_BATCH_SIZE)));
+    setVisibleCount((current) => Math.max(current, Math.min(filtered.length, Math.ceil((targetIndex + 1) / COLLECTION_BATCH_SIZE) * COLLECTION_BATCH_SIZE)));
   };
-  const title = view === "missing" ? "Cartes manquantes" : view === "owned" ? "Cartes possédées" : "Gérer mes cartes";
-  const description = view === "missing" ? "Les impressions qu’il reste à ajouter à ta collection." : view === "owned" ? "Les impressions déjà classées dans ta collection." : "Classe chaque impression comme possédée ou manquante.";
+  const title = view === "missing" ? (en ? "Missing cards" : "Cartes manquantes") : view === "owned" ? (en ? "Owned cards" : "Cartes possédées") : (en ? "Manage my cards" : "Gérer mes cartes");
+  const description = view === "missing" ? (en ? "Printings still to add to your collection." : "Les impressions qu’il reste à ajouter à ta collection.") : view === "owned" ? (en ? "Printings already saved in your collection." : "Les impressions déjà classées dans ta collection.") : (en ? "Mark each printing as owned or missing." : "Classe chaque impression comme possédée ou manquante.");
   return <main className="collection-shell">
-    <Link className="collection-back-link" href="/collection">← Retour à Ma collection</Link>
-    <div className="collection-heading"><div><p className="eyebrow" style={focusedSet ? { color: focusedSet.accent } : undefined}>{focusedSet ? `Ma collection · ${focusedSet.name}` : "Ma collection"}</p><h1>{title}</h1><p>{description}</p></div><div className="collection-count"><strong>{filtered.length}</strong><span>impression{filtered.length > 1 ? "s" : ""} affichée{filtered.length > 1 ? "s" : ""}</span></div></div>
-    <nav className="collection-subnav" aria-label="Sections de ma collection"><Link href={collectionHref("missing", focusSetCode)} aria-current={view === "missing" ? "page" : undefined}>Cartes manquantes</Link><Link href={collectionHref("owned", focusSetCode)} aria-current={view === "owned" ? "page" : undefined}>Cartes possédées</Link><Link href={collectionHref("manage", focusSetCode)} aria-current={view === "manage" ? "page" : undefined}>Gérer mes cartes</Link></nav>
-    <label className="collection-search"><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); resetVisibleList(); }} placeholder={focusedSet ? `Rechercher dans ${focusedSet.name}…` : "Rechercher une carte, un numéro, un set ou un domaine…"} /></label>
+    <Link className="collection-back-link" href="/collection">← {en ? "Back to my collection" : "Retour à Ma collection"}</Link>
+    <div className="collection-heading"><div><p className="eyebrow" style={focusedSet ? { color: focusedSet.accent } : undefined}>{focusedSet ? `${en ? "My collection" : "Ma collection"} · ${focusedSet.name}` : (en ? "My collection" : "Ma collection")}</p><h1>{title}</h1><p>{description}</p></div><div className="collection-count"><strong>{filtered.length}</strong><span>{en ? `${filtered.length === 1 ? "printing shown" : "printings shown"}` : `impression${filtered.length > 1 ? "s" : ""} affichée${filtered.length > 1 ? "s" : ""}`}</span></div></div>
+    <nav className="collection-subnav" aria-label={en ? "My collection sections" : "Sections de ma collection"}><Link href={collectionHref("missing", focusSetCode)} aria-current={view === "missing" ? "page" : undefined}>{en ? "Missing cards" : "Cartes manquantes"}</Link><Link href={collectionHref("owned", focusSetCode)} aria-current={view === "owned" ? "page" : undefined}>{en ? "Owned cards" : "Cartes possédées"}</Link><Link href={collectionHref("manage", focusSetCode)} aria-current={view === "manage" ? "page" : undefined}>{en ? "Manage my cards" : "Gérer mes cartes"}</Link></nav>
+    <label className="collection-search"><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); resetVisibleList(); }} placeholder={focusedSet ? `${en ? "Search in" : "Rechercher dans"} ${focusedSet.name}…` : (en ? "Search a card, number, set or domain…" : "Rechercher une carte, un numéro, un set ou un domaine…")} /></label>
     <Filters focusSetCode={focusSetCode} setFilter={setFilter} onSetFilter={(value) => { setSetFilter(value); resetVisibleList(); }} rarity={rarity} onRarity={(value) => { setRarity(value); resetVisibleList(); }} kind={kind} onKind={(value) => { setKind(value); resetVisibleList(); }} sort={sort} onSort={(value) => { setSort(value); resetVisibleList(); }} priceMode={priceMode} onPriceMode={(value) => { setPriceMode(value); resetVisibleList(); }} exclusions={exclusions} onToggleExclusion={(value) => { setExclusions((current) => { const next = new Set(current); if (next.has(value)) next.delete(value); else next.add(value); return next; }); resetVisibleList(); }} onClearExclusions={() => { setExclusions(new Set()); resetVisibleList(); }} />
-    <div className="collection-results-row"><div className="collection-results"><strong>{filtered.length}</strong> impression{filtered.length > 1 ? "s" : ""}</div>{filtered.length ? <form className="collection-jump" onSubmit={(event) => { event.preventDefault(); jumpToPosition(); }}><label htmlFor={`collection-jump-${view}-${focusSetCode ?? "all"}`}>Aller à</label><input id={`collection-jump-${view}-${focusSetCode ?? "all"}`} type="number" inputMode="numeric" min="1" max={filtered.length} step="1" value={jumpInput} onChange={(event) => setJumpInput(event.target.value)} aria-label={`Aller à une position entre 1 et ${filtered.length}`} /><span>/ {filtered.length}</span><button type="submit" aria-label="Aller à cette position" disabled={!isValidJump}>→</button></form> : null}</div>
+    {view === "manage" ? <div className="collection-manage-filter" aria-label={en ? "Filter cards to manage" : "Filtrer les cartes à gérer"}><span>{en ? "Show" : "Afficher"}</span><button type="button" className={manageStatus === "all" ? "is-active" : ""} onClick={() => { setManageStatus("all"); resetVisibleList(); }}>{en ? "All" : "Toutes"}</button><button type="button" className={manageStatus === "owned" ? "is-active" : ""} onClick={() => { setManageStatus("owned"); resetVisibleList(); }}>{en ? "Owned" : "Possédées"}</button><button type="button" className={manageStatus === "missing" ? "is-active" : ""} onClick={() => { setManageStatus("missing"); resetVisibleList(); }}>{en ? "Missing" : "Manquantes"}</button></div> : null}
+    <div className="collection-results-row"><div className="collection-results"><strong>{filtered.length}</strong> {en ? (filtered.length === 1 ? "printing" : "printings") : `impression${filtered.length > 1 ? "s" : ""}`}</div>{filtered.length ? <form className="collection-jump" onSubmit={(event) => { event.preventDefault(); jumpToPosition(); }}><label htmlFor={`collection-jump-${view}-${focusSetCode ?? "all"}`}>{en ? "Go to" : "Aller à"}</label>{!focusSetCode ? <select value={jumpSetCode} onChange={(event) => setJumpSetCode(event.target.value as "all" | SetCode)} aria-label={en ? "Card set" : "Set de la carte"}><option value="all">{en ? "All sets" : "Tous les sets"}</option>{SETS.map((set) => <option key={set.code} value={set.code}>{set.name}</option>)}</select> : null}<input id={`collection-jump-${view}-${focusSetCode ?? "all"}`} type="text" inputMode="text" placeholder="46, 46a, 46*" value={jumpInput} onChange={(event) => setJumpInput(event.target.value)} aria-label={en ? "Card number, for example 46, 46a or 46*" : "Numéro de carte, par exemple 46, 46a ou 46*"} /><button type="submit" aria-label={en ? "Go to this card" : "Aller à cette carte"} disabled={!isValidJump}>→</button></form> : null}</div>
     {filtered.length ? <><div className="collection-grid">{visibleImpressions.map((impression, index) => <ImpressionCard key={impression.impressionId} impression={impression} priceMode={priceMode} editable={view === "manage"} position={index + 1} onPreview={() => setPreview(impression)} />)}</div>{visibleCount < filtered.length ? <div ref={sentinelRef} className="collection-infinite-sentinel" aria-hidden="true" /> : null}</> : <div className="collection-empty"><span>◇</span><h2>{view === "manage" ? "Aucune carte ne correspond." : "Aucune impression dans cette liste."}</h2><p>{view === "manage" ? "Essaie avec une autre recherche ou un autre filtre." : "Gère tes cartes pour ajouter ou modifier un statut."}</p></div>}
     {preview ? <CollectionCardDialog impression={preview} onClose={() => setPreview(null)} /> : null}
     <button type="button" className={`collection-back-to-top${showBackToTop ? " is-visible" : ""}`} aria-label="Retour en haut" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>↑</button>
@@ -328,6 +342,8 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
 }
 
 export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { view: CollectionView; focusSetCode?: SetCode; isMobileApp?: boolean }) {
+  const { language } = useSiteLanguage();
+  const en = language === "en";
   const { impressions, loading, error } = useAllImpressions();
   const collection = useCollection();
   const [dashboardPriceMode, setDashboardPriceMode] = useState<PriceMode>("low");
@@ -351,8 +367,8 @@ export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { vi
   const { masterSet, numberedSet, financials, sets: stats } = dashboard;
   const owned = masterSet.owned;
   const missing = masterSet.total - masterSet.owned;
-  return <div className="site-shell collection-site-shell"><SiteHeader />{loading ? <main className="collection-shell"><div className="collection-loading">Chargement de la collection…</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>La collection n’a pas pu être chargée.</h2><p>Réessaie dans un instant.</p></div></main> : view === "home" ? <main className="collection-shell">
-    <div className="collection-heading"><div><p className="eyebrow">Collection personnelle</p><h1>Ma collection</h1><p>Organise toutes tes impressions Riftbound, directement sur cet appareil.</p></div></div>
+  return <div className="site-shell collection-site-shell"><SiteHeader showLanguageSwitcher={isMobileApp} />{loading ? <main className="collection-shell"><div className="collection-loading">{en ? "Loading collection…" : "Chargement de la collection…"}</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>{en ? "The collection could not be loaded." : "La collection n’a pas pu être chargée."}</h2><p>{en ? "Try again in a moment." : "Réessaie dans un instant."}</p></div></main> : view === "home" ? <main className="collection-shell">
+    <div className="collection-heading"><div><p className="eyebrow">{en ? "Personal collection" : "Collection personnelle"}</p><h1>{en ? "My collection" : "Ma collection"}</h1><p>{en ? "Manage all Riftbound printings, directly on this device." : "Organise toutes tes impressions Riftbound, directement sur cet appareil."}</p></div></div>
     <section className="collection-dashboard" aria-label="Résumé de ma collection">
       <div className="collection-dashboard-kpi"><span>Set numéroté</span><strong>{numberedSet.owned} / {numberedSet.total}</strong><p>{formatPercent(numberedSet.percentage)}</p><i><b style={{ width: `${numberedSet.percentage}%` }} /></i></div>
       <div className="collection-dashboard-kpi"><span>Master set</span><strong>{masterSet.owned} / {masterSet.total}</strong><p>{formatPercent(masterSet.percentage)}</p><i><b style={{ width: `${masterSet.percentage}%` }} /></i></div>
@@ -362,7 +378,7 @@ export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { vi
       <div className="collection-dashboard-kpi is-value is-absolute-cost"><span>Restant pour le Master set</span><strong>{formatPrice(financials.masterMissingCost.total)}</strong><p>Toutes les impressions non possédées{financials.masterMissingCost.withoutPrice ? ` · ${financials.masterMissingCost.withoutPrice} sans prix` : ""}</p></div>
       <CustomSelect className="collection-dashboard-select" label="Valeur utilisée" value={dashboardPriceMode} onChange={(value) => setDashboardPriceMode(value as PriceMode)} options={[{ value: "low", label: "Prix minimum" }, { value: "trend", label: "Tendance Cardmarket" }, { value: "avg30", label: "Moyenne 30 jours" }]} />
     </section>
-    <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>À compléter</small><h2>Cartes manquantes</h2><p>Prépare ta liste d’achat et compare les prix en un coup d’œil.</p></div><strong>{missing}</strong><em>Voir la liste →</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>Déjà dans le classeur</small><h2>Cartes possédées</h2><p>Retrouve tes impressions classées et ta progression par set.</p></div><strong>{owned}</strong><em>Voir la liste →</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>Organisation</small><h2>Gérer mes cartes</h2><p>Classe chaque impression comme possédée ou manquante.</p></div><strong>{masterSet.total}</strong><em>Gérer la collection →</em></Link></section>
+    <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>{en ? "To complete" : "À compléter"}</small><h2>{en ? "Missing cards" : "Cartes manquantes"}</h2><p>{en ? "Prepare your shopping list and compare prices at a glance." : "Prépare ta liste d’achat et compare les prix en un coup d’œil."}</p></div><strong>{missing}</strong><em>{en ? "View list →" : "Voir la liste →"}</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>{en ? "Already in binder" : "Déjà dans le classeur"}</small><h2>{en ? "Owned cards" : "Cartes possédées"}</h2><p>{en ? "Find your saved printings and progress per set." : "Retrouve tes impressions classées et ta progression par set."}</p></div><strong>{owned}</strong><em>{en ? "View list →" : "Voir la liste →"}</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>{en ? "Organisation" : "Organisation"}</small><h2>{en ? "Manage my cards" : "Gérer mes cartes"}</h2><p>{en ? "Mark each printing as owned or missing." : "Classe chaque impression comme possédée ou manquante."}</p></div><strong>{masterSet.total}</strong><em>{en ? "Manage collection →" : "Gérer la collection →"}</em></Link></section>
     <CollectionBackupControls impressions={impressions} />
     <section className="collection-breakdown"><div><p className="eyebrow">Progression par set</p><h2>Les quatre premiers sets</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, numberedSet: setNumbered, masterSet: setMaster, missing: setMissing, financials: setFinancials }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{set.name}</span><div className="collection-set-metrics"><p>Set numéroté <strong>{setNumbered.owned} / {setNumbered.total}</strong> · {formatPercent(setNumbered.percentage)}</p><p>Master set <strong>{setMaster.owned} / {setMaster.total}</strong> · {formatPercent(setMaster.percentage)}</p></div><p>{setMissing} manquante{setMissing > 1 ? "s" : ""}</p><div className="collection-set-financial"><small>Valeur possédée <b>{formatPrice(setFinancials.ownedValue.total)}</b></small><p className="collection-set-financial-label">Reste à acquérir</p><small className="is-primary">Set numéroté <b>{formatPrice(setFinancials.numberedMissingCost.total)}</b></small><small>Master hors Signées <b>{formatPrice(setFinancials.unsignedMasterMissingCost.total)}</b></small><small className="is-absolute">Master set <b>{formatPrice(setFinancials.masterMissingCost.total)}</b></small></div><i><b style={{ width: `${setMaster.percentage}%` }} /></i></Link>)}</div></section>
     {isMobileApp ? <OfflineImageControls imageUrls={impressions.map((impression) => impression.variant.imageUrl)} /> : null}

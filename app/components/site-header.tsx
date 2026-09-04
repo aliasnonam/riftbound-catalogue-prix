@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { getSetHref, SETS, type SetCode } from "@/lib/sets";
+import { useSiteLanguage } from "@/app/lib/site-language";
 
-export function SiteHeader({ activeSetCode }: { activeSetCode?: SetCode }) {
+export function SiteHeader({ activeSetCode, showLanguageSwitcher = false }: { activeSetCode?: SetCode; showLanguageSwitcher?: boolean }) {
   const navRef = useRef<HTMLElement | null>(null);
   const [hints, setHints] = useState({ left: false, right: false });
+  const { language, setLanguage } = useSiteLanguage();
   useEffect(() => {
     const nav = navRef.current;
     if (!nav) return;
@@ -21,19 +23,21 @@ export function SiteHeader({ activeSetCode }: { activeSetCode?: SetCode }) {
     const observer = new ResizeObserver(update); observer.observe(nav);
     return () => { cancelAnimationFrame(frame); nav.removeEventListener("scroll", update); observer.disconnect(); };
   }, [activeSetCode]);
+  const scrollNavigation = (direction: -1 | 1) => navRef.current?.scrollBy({ left: direction * Math.max(180, navRef.current.clientWidth * 0.72), behavior: "smooth" });
   return <header className="topbar">
-    <Link className="brand" href="/" aria-label="Catalogue Riftbound">
+    <Link className="brand" href="/" aria-label={language === "en" ? "Riftbound catalogue" : "Catalogue Riftbound"}>
       <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false"><polygon points="16,3 27,9.5 16,16" opacity=".58"/><polygon points="27,9.5 27,22.5 16,16" opacity=".9"/><polygon points="27,22.5 16,29 16,16" opacity=".68"/><polygon points="16,29 5,22.5 16,16" opacity="1"/><polygon points="5,22.5 5,9.5 16,16" opacity=".72"/><polygon points="5,9.5 16,3 16,16" opacity=".86"/><polygon className="brand-hexagon-outline" points="16,3 27,9.5 27,22.5 16,29 5,22.5 5,9.5"/></svg></span>
-      <span><strong>RIFTBOUND</strong><small>Catalogue & prix</small></span>
+      <span><strong>RIFTBOUND</strong><small>{language === "en" ? "Catalogue & prices" : "Catalogue & prix"}</small></span>
     </Link>
     <div className="set-nav-wrap">
-      <nav className="set-nav" ref={navRef} aria-label="Navigation principale">
+      <nav className="set-nav" ref={navRef} aria-label={language === "en" ? "Main navigation" : "Navigation principale"}>
         {SETS.map((item) => <Link href={getSetHref(item.code)} key={item.code} aria-current={item.code === activeSetCode ? "page" : undefined}><span>{String(item.number).padStart(2, "0")}</span>{item.name}</Link>)}
         <span className="set-nav-separator" aria-hidden="true" />
-        <Link className="collection-nav-link" href="/collection" aria-current={!activeSetCode ? "page" : undefined}><span aria-hidden="true">◇</span>Ma collection</Link>
+        <Link className="collection-nav-link" href="/collection" aria-current={!activeSetCode ? "page" : undefined}><span aria-hidden="true">◇</span>{language === "en" ? "My collection" : "Ma collection"}</Link>
       </nav>
-      <span className={`set-nav-scroll-hint is-left${hints.left ? " is-visible" : ""}`} aria-hidden="true">‹</span>
-      <span className={`set-nav-scroll-hint is-right${hints.right ? " is-visible" : ""}`} aria-hidden="true">›</span>
+      <button className={`set-nav-scroll-hint is-left${hints.left ? " is-visible" : ""}`} type="button" aria-label={language === "en" ? "Show previous navigation items" : "Afficher les éléments précédents"} onClick={() => scrollNavigation(-1)}>‹</button>
+      <button className={`set-nav-scroll-hint is-right${hints.right ? " is-visible" : ""}`} type="button" aria-label={language === "en" ? "Show next navigation items" : "Afficher les éléments suivants"} onClick={() => scrollNavigation(1)}>›</button>
     </div>
+    {showLanguageSwitcher ? <div className="language-switcher" aria-label={language === "en" ? "Site language" : "Langue du site"}><button type="button" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>EN</button><button type="button" aria-pressed={language === "fr"} onClick={() => setLanguage("fr")}>FR</button></div> : null}
   </header>;
 }

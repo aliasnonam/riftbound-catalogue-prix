@@ -67,6 +67,11 @@ export function useCollection() {
     setState(next);
   }, [persist]);
 
+  const clear = useCallback(() => {
+    persist({});
+    setState({});
+  }, [persist]);
+
   return useMemo(() => ({
     ready,
     state,
@@ -79,5 +84,6 @@ export function useCollection() {
     setMissing: (impressionId: string) => setStatus(impressionId, "missing"),
     setFoil,
     restore,
-  }), [ready, restore, setFoil, setStatus, state]);
+    clear,
+  }), [clear, ready, restore, setFoil, setStatus, state]);
 }
