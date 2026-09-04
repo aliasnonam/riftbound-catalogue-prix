@@ -187,11 +187,23 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     const contents = JSON.stringify(backup, null, 2);
     const filename = collectionBackupFilename();
     if (Capacitor.isNativePlatform()) {
-      try {
+      const writeBackup = async () => {
         await Filesystem.writeFile({ path: filename, data: contents, directory: Directory.Documents, encoding: Encoding.UTF8, recursive: true });
+        const saved = await Filesystem.readFile({ path: filename, directory: Directory.Documents, encoding: Encoding.UTF8 });
+        if (typeof saved.data !== "string" || !parseCollectionBackup(saved.data).ok) throw new Error("invalid saved backup");
+      };
+      try {
+        await writeBackup();
         setMessage({ kind: "success", text: `Sauvegarde exportée dans Documents : ${filename}` });
       } catch {
-        setMessage({ kind: "error", text: "Impossible d’enregistrer la sauvegarde dans Documents." });
+        try {
+          const permissions = await Filesystem.requestPermissions();
+          if (permissions.publicStorage !== "granted") throw new Error("documents permission denied");
+          await writeBackup();
+          setMessage({ kind: "success", text: `Sauvegarde exportée dans Documents : ${filename}` });
+        } catch {
+          setMessage({ kind: "error", text: "Impossible d’enregistrer la sauvegarde dans Documents. Autorise l’accès aux fichiers pour Riftbound puis réessaie." });
+        }
       }
       return;
     }
