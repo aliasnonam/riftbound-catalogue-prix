@@ -3,8 +3,8 @@
 Cette application utilise l'identifiant Android `com.aliasnonam.riftboundcatalogue`.
 La version Play actuelle est définie dans `android/app/build.gradle` :
 
-- `versionCode 11` : nombre entier qui doit augmenter à chaque envoi sur Google Play ;
-- `versionName "1.10"` : numéro visible par les utilisateurs.
+- `versionCode 12` : nombre entier qui doit augmenter à chaque envoi sur Google Play ;
+- `versionName "1.11"` : numéro visible par les utilisateurs.
 
 L'application cible Android 16 (API 36), avec un minimum Android 6.0 (API 23).
 

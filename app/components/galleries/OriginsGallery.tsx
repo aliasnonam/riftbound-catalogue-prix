@@ -17,7 +17,7 @@ export function OriginsGallery({
   onClose: () => void;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  const { activeIndex: index, setActiveSlide, showPrevious, showNext, stagePointerHandlers } = useGalleryNavigation(cards.length, initialIndex);
+  const { activeIndex: index, progressRef, setActiveSlide, showPrevious, showNext, stagePointerHandlers } = useGalleryNavigation(cards.length, initialIndex);
   const card = cards[index];
 
   useEffect(() => {
@@ -65,9 +65,9 @@ export function OriginsGallery({
         </div>
         <footer className="origins-gallery-footer">
           <p><strong>{card.number}</strong><span>{card.name}</span></p>
-          <div className="origins-gallery-progress" aria-label={`Carte ${index + 1} sur ${cards.length}`}>
+          <div ref={progressRef} className="origins-gallery-progress" aria-label={`Carte ${index + 1} sur ${cards.length}`}>
             {cards.map((galleryCard, cardIndex) => (
-              <button className={cardIndex === index ? "is-active" : ""} type="button" aria-label={`Afficher ${galleryCard.number} ${galleryCard.name}`} aria-current={cardIndex === index ? "true" : undefined} onClick={() => setActiveSlide(cardIndex)} key={galleryCard.number} />
+              <button className={cardIndex === index ? "is-active" : ""} type="button" tabIndex={cardIndex === index ? 0 : -1} data-gallery-slide={cardIndex} aria-label={`Afficher ${galleryCard.number} ${galleryCard.name}`} aria-current={cardIndex === index ? "true" : undefined} onClick={() => setActiveSlide(cardIndex)} key={galleryCard.number} />
             ))}
           </div>
           <small>Flèches sur ordinateur · balayage horizontal sur mobile</small>

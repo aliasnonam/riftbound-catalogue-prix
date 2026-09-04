@@ -18,7 +18,7 @@ export function RivalsGallery({
 }) {
   const [detailCard, setDetailCard] = useState<HeroPreviewCard | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const { activeIndex: index, setActiveSlide, showPrevious: movePrevious, showNext: moveNext, stagePointerHandlers } = useGalleryNavigation(diptyches.length);
+  const { activeIndex: index, progressRef, setActiveSlide, showPrevious: movePrevious, showNext: moveNext, stagePointerHandlers } = useGalleryNavigation(diptyches.length);
   const diptych = diptyches[index];
 
   const showPrevious = useCallback(() => {
@@ -84,9 +84,9 @@ export function RivalsGallery({
             </div>
             <footer className="rivals-gallery-footer">
               <p><strong>{index + 1} / {diptyches.length}</strong><span>{diptych.cards[0].name} / {diptych.cards[1].name}</span></p>
-              <div className="rivals-gallery-progress" aria-label={`Navigation entre les ${diptyches.length} diptyques Rivals`}>
+              <div ref={progressRef} className="rivals-gallery-progress" aria-label={`Navigation entre les ${diptyches.length} diptyques Rivals`}>
                 {diptyches.map((item, itemIndex) => (
-                  <button className={itemIndex === index ? "is-active" : ""} type="button" aria-label={`Afficher le diptyque ${itemIndex + 1} : ${item.cards[0].name} / ${item.cards[1].name}`} aria-current={itemIndex === index ? "true" : undefined} onClick={() => setActiveSlide(itemIndex)} key={item.imageUrl} />
+                  <button className={itemIndex === index ? "is-active" : ""} type="button" tabIndex={itemIndex === index ? 0 : -1} data-gallery-slide={itemIndex} aria-label={`Afficher le diptyque ${itemIndex + 1} : ${item.cards[0].name} / ${item.cards[1].name}`} aria-current={itemIndex === index ? "true" : undefined} onClick={() => setActiveSlide(itemIndex)} key={item.imageUrl} />
                 ))}
               </div>
               <small>Balaye horizontalement pour naviguer</small>

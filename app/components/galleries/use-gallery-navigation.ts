@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 
 const SWIPE_THRESHOLD_PX = 44;
 const SUPPRESS_CLICK_FOR_MS = 450;
@@ -17,6 +17,18 @@ export function useGalleryNavigation(length: number, initialIndex = 0) {
   const [activeIndex, setActiveIndex] = useState(() => normalizeIndex(initialIndex, length));
   const pointerStartRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const suppressClickUntilRef = useRef(0);
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const progress = progressRef.current;
+    const focusedElement = document.activeElement;
+    if (!(focusedElement instanceof HTMLElement) || !progress?.contains(focusedElement)) return;
+
+    // A progress button keeps browser focus after a tap. When the slide then
+    // changes by swipe or keyboard, move that focus to the current slide so
+    // an old button cannot retain the same visual state as the active one.
+    progress.querySelector<HTMLButtonElement>(`button[data-gallery-slide="${activeIndex}"]`)?.focus({ preventScroll: true });
+  }, [activeIndex]);
 
   const setActiveSlide = useCallback((nextIndex: number) => {
     setActiveIndex(normalizeIndex(nextIndex, length));
@@ -63,6 +75,7 @@ export function useGalleryNavigation(length: number, initialIndex = 0) {
 
   return {
     activeIndex,
+    progressRef,
     setActiveSlide,
     showPrevious,
     showNext,
