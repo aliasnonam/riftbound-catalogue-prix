@@ -279,7 +279,10 @@ function routeFor(pathname: string) {
     const view = (["owned", "missing", "manage"].includes(parts.at(-1) ?? "") ? parts.at(-1) : "home") as CollectionView;
     return <CollectionPage view={view} focusSetCode={SETS.find((set) => set.slug === parts.at(-2))?.code} isMobileApp />;
   }
-  return <CatalogPage setCode={(pathname === "/" ? SETS[0] : SETS.find((set) => pathname === `/sets/${set.slug}`) ?? SETS[0]).code} />;
+  const setCode = (pathname === "/" ? SETS[0] : SETS.find((set) => pathname === `/sets/${set.slug}`) ?? SETS[0]).code;
+  // The mobile shell keeps the same React component while navigating between
+  // sets. A key deliberately remounts the catalog so pagination returns to 50.
+  return <CatalogPage key={setCode} setCode={setCode} />;
 }
 
 function formatSyncDate(value: string) {
