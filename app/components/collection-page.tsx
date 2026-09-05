@@ -438,7 +438,10 @@ export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { vi
   const owned = masterSet.owned;
   const missing = masterSet.total - masterSet.owned;
   const recentAdditions = useMemo(
-    () => Object.values(collection.state).filter((entry) => entry.status === "owned" && entry.addedAt).length,
+    // Collections created before timestamps were introduced still have a useful
+    // insertion order. Count every owned card here so the overview matches the
+    // recent-additions page instead of incorrectly showing zero.
+    () => Object.values(collection.state).filter((entry) => entry.status === "owned").length,
     [collection.state],
   );
   return <div className="site-shell collection-site-shell"><SiteHeader />{loading ? <main className="collection-shell"><div className="collection-loading">{en ? "Loading collection…" : "Chargement de la collection…"}</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>{en ? "The collection could not be loaded." : "La collection n’a pas pu être chargée."}</h2><p>{en ? "Try again in a moment." : "Réessaie dans un instant."}</p></div></main> : view === "home" ? <main className="collection-shell">
