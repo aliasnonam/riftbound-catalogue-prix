@@ -6,9 +6,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Capacitor } from "@capacitor/core";
-import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { FilePicker } from "@capawesome/capacitor-file-picker";
-import { Share } from "@capacitor/share";
 
 import { SiteHeader } from "@/app/components/site-header";
 import { CachedCardImage } from "@/app/components/offline-image";
@@ -31,6 +29,7 @@ import { getVariantFoilPrice, getVariantNormalPrice, type PriceMode } from "@/li
 import { SETS, type SetCode } from "@/lib/sets";
 import { useCollection } from "@/hooks/use-collection";
 import { useSiteLanguage } from "@/app/lib/site-language";
+import { CollectionBackupDownload } from "@/app/lib/native-backup-download";
 
 export type CollectionView = "home" | "missing" | "owned" | "manage";
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
@@ -198,18 +197,10 @@ function CollectionBackupControls({ impressions }: { impressions: CollectionImpr
     const filename = collectionBackupFilename();
     if (Capacitor.isNativePlatform()) {
       try {
-        // Le cache de l'application ne nécessite aucune permission de stockage Android.
-        // Le panneau système laisse ensuite l'utilisateur choisir Fichiers, Drive, etc.
-        const saved = await Filesystem.writeFile({ path: filename, data: contents, directory: Directory.Cache, encoding: Encoding.UTF8, recursive: true });
-        await Share.share({
-          title: "Exporter ma collection Riftbound",
-          text: "Sauvegarde de collection Riftbound",
-          files: [saved.uri],
-          dialogTitle: "Enregistrer ou partager la sauvegarde",
-        });
-        setMessage({ kind: "success", text: "Choisis Fichiers ou Drive dans le panneau Android pour enregistrer la sauvegarde JSON." });
+        await CollectionBackupDownload.saveDownload({ filename, contents });
+        setMessage({ kind: "success", text: `Sauvegarde exportée dans Téléchargements/Riftbound : ${filename}` });
       } catch {
-        setMessage({ kind: "error", text: "Impossible de préparer la sauvegarde. Réessaie puis choisis Fichiers ou Drive dans le panneau Android." });
+        setMessage({ kind: "error", text: "Impossible d’enregistrer la sauvegarde dans Téléchargements. Réessaie." });
       }
       return;
     }

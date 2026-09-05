@@ -27,7 +27,6 @@
     "@capacitor/core": "7.4.3",
     "@capacitor/file-transfer": "^1.0.12",
     "@capacitor/filesystem": "^7.1.8",
-    "@capacitor/share": "^7.0.4",
     "@capawesome/capacitor-file-picker": "^7.2.0",
     "@pantrist/capacitor-plugin-ml-kit-text-recognition": "^7.0.0",
     "drizzle-orm": "0.45.2",

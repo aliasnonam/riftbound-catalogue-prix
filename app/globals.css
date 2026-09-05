@@ -2259,7 +2259,40 @@ a { color: inherit; text-decoration: none; }
 .collection-scanner-ownership.is-owned { color: #5bdb9d !important; }
 .collection-scanner-ownership.is-missing { color: var(--set-accent) !important; }
 
+/* The scan guide is a real vertical card rather than a generic camera frame. */
+.collection-scanner-frame {
+  position: relative;
+  min-height: 0;
+  place-items: center;
+  margin: 22px auto 16px;
+  padding: 14px;
+}
+.collection-scanner-frame > img {
+  display: block;
+  width: min(100%, 184px);
+  height: auto;
+  border: 1px solid color-mix(in srgb, var(--set-accent) 48%, var(--line));
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .28);
+}
+.collection-scanner-frame > span {
+  position: absolute;
+  bottom: 24px;
+}
+.collection-scanner-art.card-preview-trigger {
+  width: 104px;
+  min-height: 145px !important;
+  padding: 0 !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 10px !important;
+  background: rgba(255,255,255,.025) !important;
+  cursor: zoom-in;
+}
+.collection-scanner-art.card-preview-trigger img { width: 100%; height: auto; }
+.collection-scanner-card small { display: block; margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+
 @media (max-width: 680px) {
   .collection-scanner-card { grid-template-columns: 68px minmax(0, 1fr); gap: 12px; }
   .collection-scanner-art { width: 68px; min-height: 92px; }
+  .collection-scanner-art.card-preview-trigger { width: 92px; min-height: 129px !important; }
 }
