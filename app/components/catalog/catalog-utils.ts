@@ -71,11 +71,19 @@ export function variantForDisplay(row: CatalogRow, filter: FilterKind, rarity: s
   return candidates[0] ?? row.variants.find((variant) => variant.kind === "base") ?? row.variants[0];
 }
 
-export function rarityLabel(rarity: string) {
-  return RARITY_LABELS[rarity] ?? rarity;
+export function rarityLabel(rarity: string, language: "fr" | "en" = "fr") {
+  return language === "en" ? rarity : (RARITY_LABELS[rarity] ?? rarity);
 }
 
-export function kindLabel(kind: VariantKind) {
+export function kindLabel(kind: VariantKind, language: "fr" | "en" = "fr") {
+  if (language === "en") {
+    if (kind === "base") return "Set card";
+    if (kind === "alternate") return "Alternate";
+    if (kind === "crystal-rose") return "Crystal Rose";
+    if (kind === "overnumbered") return "Outnumbered";
+    if (kind === "signature") return "Signed";
+    return "Variant";
+  }
   if (kind === "base") return "Carte du set";
   if (kind === "alternate") return "Alternative";
   if (kind === "crystal-rose") return "Crystal Rose";
@@ -84,16 +92,16 @@ export function kindLabel(kind: VariantKind) {
   return "Variante";
 }
 
-export function variantBadgeLabel(variant: CatalogVariant) {
-  return variant.kind === "base" ? rarityLabel(variant.rarity) : kindLabel(variant.kind);
+export function variantBadgeLabel(variant: CatalogVariant, language: "fr" | "en" = "fr") {
+  return variant.kind === "base" ? rarityLabel(variant.rarity, language) : kindLabel(variant.kind, language);
 }
 
 export function rarityClassName(rarity: string) {
   return rarity.toLocaleLowerCase("en").replace(/[^a-z0-9]+/g, "-");
 }
 
-export function modeLabel(mode: PriceMode) {
-  if (mode === "low") return "À partir de";
-  if (mode === "trend") return "Tendance";
-  return "Moyenne 30 j";
+export function modeLabel(mode: PriceMode, language: "fr" | "en" = "fr") {
+  if (mode === "low") return language === "en" ? "lowest price" : "À partir de";
+  if (mode === "trend") return language === "en" ? "Cardmarket trend" : "Tendance";
+  return language === "en" ? "30-day average" : "Moyenne 30 j";
 }

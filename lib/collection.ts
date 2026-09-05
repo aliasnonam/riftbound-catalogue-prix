@@ -7,6 +7,12 @@ export type CollectionStatus = "owned" | "missing";
 export type CollectionEntry = {
   status: CollectionStatus;
   foil?: true;
+  /**
+   * Moment where this printing was last added to the collection.
+   *
+   * It is optional to keep every existing local collection and backup valid.
+   */
+  addedAt?: string;
 };
 export type CollectionState = Record<string, CollectionEntry>;
 
@@ -201,7 +207,12 @@ export function withCollectionStatus(
     delete next[impressionId];
     return next;
   }
-  next[impressionId] = { status: "owned" };
+  const previous = state[impressionId];
+  next[impressionId] = {
+    status: "owned",
+    ...(previous?.foil ? { foil: true } : {}),
+    addedAt: previous?.addedAt ?? new Date().toISOString(),
+  };
   return next;
 }
 
@@ -214,7 +225,11 @@ export function withCollectionFoil(
   if (!entry || entry.status !== "owned" || impression.variant.pricing !== "dual") return state;
   return {
     ...state,
-    [impression.impressionId]: foil ? { status: "owned", foil: true } : { status: "owned" },
+    [impression.impressionId]: {
+      status: "owned",
+      ...(foil ? { foil: true } : {}),
+      ...(entry.addedAt ? { addedAt: entry.addedAt } : {}),
+    },
   };
 }
 
@@ -237,7 +252,10 @@ function isCollectionState(value: unknown): value is CollectionState {
       && typeof entry === "object"
       && !Array.isArray(entry)
       && ((entry as CollectionEntry).status === "owned" || (entry as CollectionEntry).status === "missing")
-      && ((entry as CollectionEntry).foil === undefined || (entry as CollectionEntry).foil === true),
+      && ((entry as CollectionEntry).foil === undefined || (entry as CollectionEntry).foil === true)
+      && ((entry as CollectionEntry).addedAt === undefined
+        || (typeof (entry as CollectionEntry).addedAt === "string"
+          && Number.isFinite(Date.parse((entry as CollectionEntry).addedAt as string)))),
   );
 }
 
@@ -251,9 +269,13 @@ function normalizeCollectionState(value: unknown): CollectionState {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
       const candidate = entry as Partial<CollectionEntry> & { status?: unknown };
       if (candidate.status !== "owned") return [];
-      return [[impressionId, candidate.foil === true
-        ? { status: "owned", foil: true }
-        : { status: "owned" }]];
+      return [[impressionId, {
+        status: "owned",
+        ...(candidate.foil === true ? { foil: true } : {}),
+        ...(typeof candidate.addedAt === "string" && Number.isFinite(Date.parse(candidate.addedAt))
+          ? { addedAt: candidate.addedAt }
+          : {}),
+      } satisfies CollectionEntry]];
     }),
   );
 }

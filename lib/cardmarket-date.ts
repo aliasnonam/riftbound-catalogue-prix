@@ -1,12 +1,10 @@
-const CARDMARKET_SYNC_DATE = new Intl.DateTimeFormat("fr-FR", {
-  dateStyle: "long",
-  timeStyle: "short",
-  timeZone: "Europe/Paris",
-});
-
-export function formatCardmarketSyncDate(value: string) {
+export function formatCardmarketSyncDate(value: string, language: "fr" | "en" = "fr") {
   const date = new Date(value);
   return Number.isFinite(date.getTime())
-    ? CARDMARKET_SYNC_DATE.format(date)
-    : "Date indisponible";
+    ? new Intl.DateTimeFormat(language === "en" ? "en-GB" : "fr-FR", {
+      dateStyle: "long",
+      timeStyle: "short",
+      timeZone: "Europe/Paris",
+    }).format(date)
+    : language === "en" ? "Date unavailable" : "Date indisponible";
 }

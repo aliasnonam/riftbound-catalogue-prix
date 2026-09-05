@@ -10,6 +10,7 @@ import {
 } from "@/lib/pricing";
 import type { SetCode } from "@/lib/sets";
 import { useCollection } from "@/hooks/use-collection";
+import { useSiteLanguage } from "@/app/lib/site-language";
 
 import { CardPreviewThumb } from "./CardPreview";
 import {
@@ -29,18 +30,20 @@ export function VariantDetails({
   setCode: SetCode;
 }) {
   const collection = useCollection();
+  const { language } = useSiteLanguage();
+  const en = language === "en";
 
   return (
     <div className="variant-panel">
       <div className="variant-panel-heading">
         <div>
-          <p className="mini-label">Toutes les impressions associées</p>
+          <p className="mini-label">{en ? "All associated printings" : "Toutes les impressions associées"}</p>
           <p>
-            Les prix affichés suivent le mode « {modeLabel(mode).toLowerCase()} ».
+            {en ? "Prices use the " + modeLabel(mode, "en").toLowerCase() + " mode." : "Les prix affichés suivent le mode « " + modeLabel(mode).toLowerCase() + " »."}
           </p>
         </div>
         <a href={row.cardmarketUrl} target="_blank" rel="noreferrer">
-          Voir les versions sur Cardmarket <span aria-hidden="true">↗</span>
+          {en ? "View versions on Cardmarket" : "Voir les versions sur Cardmarket"} <span aria-hidden="true">↗</span>
         </a>
       </div>
       <div className="variant-grid">
@@ -54,14 +57,14 @@ export function VariantDetails({
               <CardPreviewThumb
                 className="variant-thumb"
                 imageUrl={variant.imageUrl}
-                name={`${variant.name} — ${variantBadgeLabel(variant)}`}
+                name={`${variant.name} — ${variantBadgeLabel(variant, language)}`}
               />
               <div className="variant-copy">
                 <div className="variant-title-line">
                   <span
                     className={`variant-kind kind-${variant.kind} rarity-${rarityClassName(variant.rarity)}`}
                   >
-                    {variantBadgeLabel(variant)}
+                    {variantBadgeLabel(variant, language)}
                   </span>
                   <span className="variant-number">{variant.number}</span>
                 </div>
@@ -85,11 +88,11 @@ export function VariantDetails({
                   </div>
                 )}
                 <div className="variant-collection-status">
-                  <span>Ma collection</span>
+                  <span>{en ? "My collection" : "Ma collection"}</span>
                   <b className={`collection-status-badge is-${collectionStatus}`}>
                     {collectionStatus === "owned"
-                      ? "✓ Possédée"
-                      : "✕ Manquante"}
+                      ? (en ? "✓ Owned" : "✓ Possédée")
+                      : (en ? "✕ Missing" : "✕ Manquante")}
                   </b>
                 </div>
               </div>

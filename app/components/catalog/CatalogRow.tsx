@@ -12,6 +12,7 @@ import {
   type PriceMode,
 } from "@/lib/pricing";
 import type { SetCode } from "@/lib/sets";
+import { useSiteLanguage } from "@/app/lib/site-language";
 
 import { CardPreviewThumb } from "./CardPreview";
 import { VariantDetails } from "./VariantDetails";
@@ -29,11 +30,13 @@ function PriceCell({
   column,
   mode,
   displayVariant,
+  language,
 }: {
   row: CatalogRowData;
   column: PriceColumn;
   mode: PriceMode;
   displayVariant: CatalogVariant | undefined;
+  language: "fr" | "en";
 }) {
   const base = row.associatedVariants.find((variant) => variant.kind === "base");
   let variants: CatalogVariant[] = [];
@@ -65,7 +68,7 @@ function PriceCell({
     <div className={`price-cell ${primary === null ? "is-empty" : ""}`}>
       <span className="price-value">{formatPrice(primary)}</span>
       {variants.length > 1 ? (
-        <span className="price-note">+{variants.length - 1} variante</span>
+        <span className="price-note">+{variants.length - 1} {language === "en" ? "variant" : "variante"}</span>
       ) : null}
     </div>
   );
@@ -88,6 +91,8 @@ export function CatalogRow({
   isOpen: boolean;
   onToggle: (rowId: string) => void;
 }) {
+  const { language } = useSiteLanguage();
+  const en = language === "en";
   const displayVariant = variantForDisplay(row, activeFilterKind, rarity);
   const displayRarity = displayVariant?.rarity ?? row.rarity;
   const displayNumber =
@@ -108,7 +113,7 @@ export function CatalogRow({
             <div className="card-kicker">
               <span className="collector-number">{displayNumber}</span>
               <span className={`rarity rarity-${displayRarity.toLowerCase()}`}>
-                {rarityLabel(displayRarity)}
+                {rarityLabel(displayRarity, language)}
               </span>
               {getDescriptiveBadges(row, setCode).map((badge) => (
                 <span
@@ -128,16 +133,16 @@ export function CatalogRow({
             </p>
           </div>
         </div>
-        <PriceCell row={row} column="normal" mode={priceMode} displayVariant={displayVariant} />
-        <PriceCell row={row} column="foil" mode={priceMode} displayVariant={displayVariant} />
-        <PriceCell row={row} column="alternate" mode={priceMode} displayVariant={displayVariant} />
-        <PriceCell row={row} column="overnumbered" mode={priceMode} displayVariant={displayVariant} />
-        <PriceCell row={row} column="signature" mode={priceMode} displayVariant={displayVariant} />
+        <PriceCell row={row} column="normal" mode={priceMode} displayVariant={displayVariant} language={language} />
+        <PriceCell row={row} column="foil" mode={priceMode} displayVariant={displayVariant} language={language} />
+        <PriceCell row={row} column="alternate" mode={priceMode} displayVariant={displayVariant} language={language} />
+        <PriceCell row={row} column="overnumbered" mode={priceMode} displayVariant={displayVariant} language={language} />
+        <PriceCell row={row} column="signature" mode={priceMode} displayVariant={displayVariant} language={language} />
         <button
           className="expand-button"
           type="button"
           aria-expanded={isOpen}
-          aria-label={`${isOpen ? "Masquer" : "Afficher"} les variantes de ${row.name}`}
+          aria-label={(isOpen ? (en ? "Hide" : "Masquer") : (en ? "Show" : "Afficher")) + " " + (en ? "variants for" : "les variantes de") + " " + row.name}
           onClick={() => onToggle(row.id)}
         >
           <span aria-hidden="true">⌄</span>

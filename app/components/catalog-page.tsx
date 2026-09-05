@@ -25,6 +25,8 @@ import {
 } from "@/lib/pricing";
 import {
   getSetDisplayName,
+  getSetRelease,
+  getSetSubtitle,
   SET_BY_CODE,
   type SetCode,
 } from "@/lib/sets";
@@ -242,8 +244,9 @@ const RIVAL_DIPTYCHES: readonly RivalDiptych[] = [
 ] as const;
 
 function CatalogLoading() {
+  const { language } = useSiteLanguage();
   return (
-    <div className="catalog-loading" aria-label="Chargement du catalogue">
+    <div className="catalog-loading" aria-label={language === "en" ? "Loading catalogue" : "Chargement du catalogue"}>
       {Array.from({ length: 8 }, (_, index) => (
         <div className="skeleton-row" key={index}>
           <span className="skeleton skeleton-image" />
@@ -337,7 +340,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
             : current,
         );
         setCooldownClock(Date.now());
-        setRefreshMessage(`Les prix viennent déjà d’être relevés. Prochaine actualisation à ${formatRefreshAvailability(result.refreshAvailableAt) ?? "plus tard"}.`);
+        setRefreshMessage(en ? `Prices were already collected. Next refresh at ${formatRefreshAvailability(result.refreshAvailableAt) ?? "a later time"}.` : `Les prix viennent déjà d’être relevés. Prochaine actualisation à ${formatRefreshAvailability(result.refreshAvailableAt) ?? "plus tard"}.`);
         setRefreshState("idle");
         return;
       }
@@ -346,20 +349,20 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
       setPayload(result.payload);
       setError(null);
       setRefreshState("success");
-      setRefreshMessage("Prix Cardmarket actualisés et enregistrés sur cet appareil.");
+      setRefreshMessage(en ? "Cardmarket prices were refreshed and saved on this device." : "Prix Cardmarket actualisés et enregistrés sur cet appareil.");
       refreshResetTimerRef.current = window.setTimeout(() => {
         setRefreshState("idle");
         refreshResetTimerRef.current = null;
       }, 2500);
     } catch {
       setRefreshState("error");
-      setRefreshMessage("Actualisation impossible : les derniers prix enregistrés restent affichés. Vérifie ta connexion puis réessaie.");
+      setRefreshMessage(en ? "Refresh failed: the latest saved prices remain displayed. Check your connection and try again." : "Actualisation impossible : les derniers prix enregistrés restent affichés. Vérifie ta connexion puis réessaie.");
       refreshResetTimerRef.current = window.setTimeout(() => {
         setRefreshState("idle");
         refreshResetTimerRef.current = null;
       }, 4000);
     }
-  }, [setCode]);
+  }, [en, language, setCode]);
 
   useEffect(() => {
     const syncTimer = window.setTimeout(() => {
@@ -572,7 +575,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
 
   return (
     <div className="site-shell" style={style}>
-      <SiteHeader activeSetCode={setCode} showLanguageSwitcher={isMobileApp} />
+      <SiteHeader activeSetCode={setCode} />
 
       <main>
         <section className={heroClassName}>
@@ -582,9 +585,9 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
               Set {String(set.number).padStart(2, "0")} <span>·</span> {set.code}
             </p>
             <h1>{getSetDisplayName(set, language)}</h1>
-            <p className="hero-subtitle">{set.subtitle}</p>
+            <p className="hero-subtitle">{getSetSubtitle(set, language)}</p>
             <div className="hero-meta">
-              <span>{en ? "Release" : "Sortie"} : {set.release}</span>
+              <span>{en ? "Release" : "Sortie"} : {getSetRelease(set, language)}</span>
               <span>{set.baseSize} {en ? "cards in the numbered set" : "cartes dans le set numéroté"}</span>
             </div>
             {setCode === "VEN" || setCode === "OGN" ? (
@@ -607,33 +610,33 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
           {setCode === "VEN" ? (
             <figure
               className="rival-hero-cards"
-              aria-label="Diptyque Rival Overnumbered : Vi face à Jinx"
+              aria-label={en ? "Rival Overnumbered diptych: Vi facing Jinx" : "Diptyque Rival Overnumbered : Vi face à Jinx"}
             >
               <button
                 className="rival-hero-card rival-hero-card--vi"
                 type="button"
-                aria-label="Voir les 11 diptyques Rivals à partir de Vi"
+                aria-label={en ? "View the 11 Rivals diptychs starting with Vi" : "Voir les 11 diptyques Rivals à partir de Vi"}
                 aria-haspopup="dialog"
                 onClick={() => setRivalsGalleryOpen(true)}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={VENDETTA_RIVAL_CARDS.vi.imageUrl}
-                  alt={`Carte ${VENDETTA_RIVAL_CARDS.vi.name}`}
+                  alt={`${en ? "Card" : "Carte"} ${VENDETTA_RIVAL_CARDS.vi.name}`}
                   decoding="async"
                 />
               </button>
               <button
                 className="rival-hero-card rival-hero-card--jinx"
                 type="button"
-                aria-label="Voir les 11 diptyques Rivals à partir de Jinx"
+                aria-label={en ? "View the 11 Rivals diptychs starting with Jinx" : "Voir les 11 diptyques Rivals à partir de Jinx"}
                 aria-haspopup="dialog"
                 onClick={() => setRivalsGalleryOpen(true)}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={VENDETTA_RIVAL_CARDS.jinx.imageUrl}
-                  alt={`Carte ${VENDETTA_RIVAL_CARDS.jinx.name}`}
+                  alt={`${en ? "Card" : "Carte"} ${VENDETTA_RIVAL_CARDS.jinx.name}`}
                   decoding="async"
                 />
               </button>
@@ -641,14 +644,14 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
           ) : setCode === "OGN" ? (
             <figure
               className="origins-binder-hero"
-              aria-label="Planche de collection des 12 cartes signées Outnumbered d’Origins, de 299 à 310"
+              aria-label={en ? "Binder sheet of the 12 signed Origins Outnumbered cards, from 299 to 310" : "Planche de collection des 12 cartes signées Outnumbered d’Origins, de 299 à 310"}
             >
               <div className="origins-binder-grid">
                 {ORIGINS_SIGNED_HERO_CARDS.map((card, cardIndex) => (
                   <button
                     className="origins-binder-slot"
                     type="button"
-                    aria-label={`Ouvrir la fiche de ${card.name}, ${card.number}`}
+                    aria-label={en ? `Open ${card.name}, ${card.number}` : `Ouvrir la fiche de ${card.name}, ${card.number}`}
                     aria-haspopup="dialog"
                     onClick={() => setOriginsGalleryIndex(cardIndex)}
                     key={card.number}
@@ -656,7 +659,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={card.imageUrl}
-                      alt={`Carte ${card.number} ${card.name}`}
+                      alt={`${en ? "Card" : "Carte"} ${card.number} ${card.name}`}
                       decoding="async"
                     />
                     <small>{card.number}</small>
@@ -667,19 +670,19 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
           ) : featuredHeroCard ? (
             <figure
               className={`featured-hero-card featured-hero-card--${setCode.toLowerCase()}`}
-              aria-label={`Carte mise en avant : ${featuredHeroCard.name}`}
+              aria-label={en ? `Featured card: ${featuredHeroCard.name}` : `Carte mise en avant : ${featuredHeroCard.name}`}
             >
               <button
                 className="featured-hero-card-frame"
                 type="button"
-                aria-label={`Ouvrir la fiche de ${featuredHeroCard.name}`}
+                aria-label={en ? `Open ${featuredHeroCard.name}` : `Ouvrir la fiche de ${featuredHeroCard.name}`}
                 aria-haspopup="dialog"
                 onClick={() => setHeroPreview(featuredHeroCard)}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={featuredHeroCard.imageUrl}
-                  alt={`Carte ${featuredHeroCard.name}`}
+                  alt={`${en ? "Card" : "Carte"} ${featuredHeroCard.name}`}
                   decoding="async"
                 />
               </button>
@@ -712,10 +715,10 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
                   <strong>
                     {payload.sourceStatus === "live"
                       ? (en ? "Cardmarket guide is up to date" : "Guide Cardmarket à jour")
-                      : "Dernier relevé disponible"}
+                      : (en ? "Latest available update" : "Dernier relevé disponible")}
                   </strong>
-                  <span>{formatCardmarketSyncDate(payload.pricesUpdatedAt)}</span>
-                  {refreshAvailableLabel ? <small className="refresh-availability">Prochaine actualisation à {refreshAvailableLabel}</small> : null}
+                  <span>{formatCardmarketSyncDate(payload.pricesUpdatedAt, language)}</span>
+                  {refreshAvailableLabel ? <small className="refresh-availability">{en ? "Next refresh at " : "Prochaine actualisation à "}{refreshAvailableLabel}</small> : null}
                 </div>
                 <button
                   className={`refresh-button is-${refreshState}${refreshBlocked ? " is-cooldown" : ""}`}
@@ -725,13 +728,13 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
                   onClick={() => void refreshCatalog()}
                 >
                   {refreshState === "loading"
-                    ? "Actualisation…"
+                    ? (en ? "Refreshing…" : "Actualisation…")
                     : refreshState === "success"
-                      ? "À jour ✓"
+                      ? (en ? "Up to date ✓" : "À jour ✓")
                       : refreshState === "error"
-                        ? "Échec de l’actualisation"
+                        ? (en ? "Refresh failed" : "Échec de l’actualisation")
                         : refreshBlocked
-                          ? "Réessayer plus tard"
+                          ? (en ? "Try again later" : "Réessayer plus tard")
                           : (en ? "Refresh" : "Actualiser")}
                 </button>
                 {refreshMessage ? <p className="refresh-message" role="status">{refreshMessage}</p> : null}
@@ -774,15 +777,14 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
 
           <div className="result-line" aria-live="polite">
             <span>
-              <strong>{filteredRows.length}</strong> carte
-              {filteredRows.length > 1 ? "s" : ""}
+              <strong>{filteredRows.length}</strong> {en ? (filteredRows.length === 1 ? "card" : "cards") : <>carte{filteredRows.length > 1 ? "s" : ""}</>}
             </span>
             <span className="result-meta">
               <span className="preview-hint preview-hint-hover">
-                Survole une carte pour l’agrandir
+                {en ? "Hover a card to enlarge it" : "Survole une carte pour l’agrandir"}
               </span>
               <span className="preview-hint preview-hint-touch">
-                Touche une carte pour l’agrandir
+                {en ? "Tap a card to enlarge it" : "Touche une carte pour l’agrandir"}
               </span>
             </span>
           </div>
@@ -792,11 +794,11 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
             <div className="error-card" role="alert">
               <span aria-hidden="true">!</span>
               <div>
-                <strong>Impossible de charger les prix.</strong>
+                <strong>{en ? "Prices could not be loaded." : "Impossible de charger les prix."}</strong>
                 <p>{error}</p>
               </div>
               <button type="button" onClick={() => void loadCatalog()}>
-                Réessayer
+                {en ? "Try again" : "Réessayer"}
               </button>
             </div>
           ) : null}
@@ -804,12 +806,12 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
           {!loading && !error && payload ? (
             <div className="catalog-table">
               <div className="catalog-head" aria-hidden="true">
-                <span>Carte</span>
+                <span>{en ? "Card" : "Carte"}</span>
                 <span>Normal</span>
                 <span>Foil</span>
-                <span>Alternative</span>
+                <span>{en ? "Alternate" : "Alternative"}</span>
                 <span>Outnumbered</span>
-                <span>Signée</span>
+                <span>{en ? "Signed" : "Signée"}</span>
                 <span />
               </div>
               <div
@@ -833,8 +835,8 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
               {visibleRows.length === 0 ? (
                 <div className="empty-state">
                   <span aria-hidden="true">◇</span>
-                  <h3>Aucune carte ne correspond.</h3>
-                  <p>Essaie un autre nom ou retire un filtre.</p>
+                  <h3>{en ? "No cards match." : "Aucune carte ne correspond."}</h3>
+                  <p>{en ? "Try a different name or remove a filter." : "Essaie un autre nom ou retire un filtre."}</p>
                 </div>
               ) : null}
 
@@ -847,8 +849,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
                       setVisibleCount((count) => count + PAGE_SIZE)
                     }
                   >
-                    {en ? "Show" : "Afficher"} {nextBatchCount} {en ? "more card" : "carte"}
-                    {nextBatchCount > 1 ? "s" : ""} de plus
+                    {en ? "Show " + nextBatchCount + " more " + (nextBatchCount === 1 ? "card" : "cards") : <>Afficher {nextBatchCount} carte{nextBatchCount > 1 ? "s" : ""} de plus</>}
                   </button>
                   <span className="load-separator" aria-hidden="true">
                     ·
@@ -873,10 +874,7 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
             <div>
               <strong>{en ? "How to read prices" : "Comment lire les prix"}</strong>
               <p>
-                Le « prix minimum » provient du guide public Cardmarket et peut
-                inclure plusieurs langues ou états. Il ne garantit donc pas une
-                offre française Near Mint. Utilise le lien Cardmarket dans le
-                détail d’une carte pour vérifier les annonces disponibles.
+                {en ? "The lowest price comes from the public Cardmarket guide and may include several languages or conditions. It therefore does not guarantee a French Near Mint offer. Use the Cardmarket link in a card’s details to review the available listings." : "Le « prix minimum » provient du guide public Cardmarket et peut inclure plusieurs langues ou états. Il ne garantit donc pas une offre française Near Mint. Utilise le lien Cardmarket dans le détail d’une carte pour vérifier les annonces disponibles."}
               </p>
             </div>
           </aside>
@@ -885,13 +883,12 @@ export function CatalogPage({ setCode, isMobileApp = false }: { setCode: SetCode
 
       <footer className="site-footer">
         <div>
-          <strong>Riftbound — Catalogue & prix</strong>
+          <strong>{en ? "Riftbound — Catalogue & prices" : "Riftbound — Catalogue & prix"}</strong>
           <p>
-            Ce site est un projet indépendant et n’est ni affilié, ni sponsorisé,
-            ni approuvé par Riot Games, Riftbound ou Cardmarket.
+            {en ? "This is an independent project and is not affiliated with, sponsored by, or approved by Riot Games, Riftbound or Cardmarket." : "Ce site est un projet indépendant et n’est ni affilié, ni sponsorisé, ni approuvé par Riot Games, Riftbound ou Cardmarket."}
           </p>
         </div>
-        <p>Riftbound, League of Legends et Cardmarket appartiennent à leurs propriétaires respectifs.</p>
+        <p>{en ? "Riftbound, League of Legends and Cardmarket belong to their respective owners." : "Riftbound, League of Legends et Cardmarket appartiennent à leurs propriétaires respectifs."}</p>
       </footer>
 
       {heroPreview ? (

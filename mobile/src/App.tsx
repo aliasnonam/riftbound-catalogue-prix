@@ -6,6 +6,7 @@ import productSnapshot from "@/data/cardmarket-products.json";
 import { withFrenchCardNames } from "@/lib/french-card-names";
 import { CatalogPage } from "@/app/components/catalog-page";
 import { CollectionPage, type CollectionView } from "@/app/components/collection-page";
+import { useSiteLanguage } from "@/app/lib/site-language";
 import {
   buildCatalog,
   type CatalogPayload,
@@ -205,14 +206,14 @@ async function fetchPricesFromSite(): Promise<LocalPriceData> {
       })();
 
   if (remote.status < 200 || remote.status >= 300 || !remote.data) {
-    throw new Error("Le site n'a pas fourni de prix.");
+    throw new Error("The site did not provide prices.");
   }
 
   const data = typeof remote.data === "string"
     ? JSON.parse(remote.data) as unknown
     : remote.data as unknown;
   if (!isRemotePricesResponse(data)) {
-    throw new Error("La réponse de prix du site est incomplète.");
+    throw new Error("The site price response is incomplete.");
   }
 
   return {
@@ -281,7 +282,7 @@ window.fetch = async (input, init) => {
 function routeFor(pathname: string) {
   if (pathname.startsWith("/collection")) {
     const parts = pathname.split("/").filter(Boolean);
-    const view = (["owned", "missing", "manage"].includes(parts.at(-1) ?? "") ? parts.at(-1) : "home") as CollectionView;
+    const view = (["owned", "missing", "manage", "recent"].includes(parts.at(-1) ?? "") ? parts.at(-1) : "home") as CollectionView;
     return <CollectionPage view={view} focusSetCode={SETS.find((set) => set.slug === parts.at(-2))?.code} isMobileApp />;
   }
   const setCode = (pathname === "/" ? SETS[0] : SETS.find((set) => pathname === `/sets/${set.slug}`) ?? SETS[0]).code;
@@ -290,10 +291,10 @@ function routeFor(pathname: string) {
   return <CatalogPage key={setCode} setCode={setCode} isMobileApp />;
 }
 
-function formatSyncDate(value: string) {
+function formatSyncDate(value: string, language: "fr" | "en") {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "date inconnue";
-  return new Intl.DateTimeFormat("fr-FR", {
+  if (!Number.isFinite(date.getTime())) return language === "en" ? "unknown date" : "date inconnue";
+  return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "fr-FR", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -304,6 +305,8 @@ function formatSyncDate(value: string) {
 }
 
 function MobilePriceSyncStatus() {
+  const { language } = useSiteLanguage();
+  const en = language === "en";
   const [status, setStatus] = useState<PriceSyncStatus>(currentPriceSyncStatus);
   const [visible, setVisible] = useState(true);
 
@@ -332,8 +335,8 @@ function MobilePriceSyncStatus() {
       <aside className="android-price-sync is-syncing" role="status" aria-live="polite">
         <span className="android-price-sync-dot" aria-hidden="true" />
         <div>
-          <strong>Synchronisation avec le site…</strong>
-          <span>Les cartes et les derniers prix locaux restent disponibles.</span>
+          <strong>{en ? "Synchronising with the site…" : "Synchronisation avec le site…"}</strong>
+          <span>{en ? "Cards and the latest local prices remain available." : "Les cartes et les derniers prix locaux restent disponibles."}</span>
         </div>
       </aside>
     );
@@ -341,13 +344,13 @@ function MobilePriceSyncStatus() {
 
   const usingSiteReleve = status.sourceStatus === "live";
   const title = status.state === "offline"
-    ? "Hors connexion"
+    ? (en ? "Offline" : "Hors connexion")
     : usingSiteReleve
-      ? "Dernier relevé du site"
-      : "Prix inclus dans l’application";
+      ? (en ? "Latest site update" : "Dernier relevé du site")
+      : (en ? "Prices included in the app" : "Prix inclus dans l’application");
   const detail = status.state === "offline"
-    ? `${status.cached ? "Dernier relevé conservé" : "Derniers prix inclus"} : ${formatSyncDate(status.updatedAt)}`
-    : formatSyncDate(status.updatedAt);
+    ? (en ? (status.cached ? "Latest saved update" : "Latest bundled prices") : (status.cached ? "Dernier relevé conservé" : "Derniers prix inclus")) + " : " + formatSyncDate(status.updatedAt, language)
+    : formatSyncDate(status.updatedAt, language);
 
   return (
     <aside className={`android-price-sync is-${status.state}`} role="status" aria-live="polite">

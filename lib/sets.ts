@@ -6,7 +6,9 @@ export type SetDefinition = {
   number: number;
   name: string;
   subtitle: string;
+  subtitleEn: string;
   release: string;
+  releaseEn: string;
   baseSize: number;
   expansionId: number;
   accent: string;
@@ -20,7 +22,9 @@ export const SETS: SetDefinition[] = [
     number: 1,
     name: "Origins",
     subtitle: "Le point de départ de la collection Riftbound.",
+    subtitleEn: "The starting point for the Riftbound collection.",
     release: "31 octobre 2025",
+    releaseEn: "31 October 2025",
     baseSize: 298,
     expansionId: 6286,
     accent: "#e7b85c",
@@ -33,7 +37,10 @@ export const SETS: SetDefinition[] = [
     name: "Spiritforged",
     subtitle:
       "La collection s’étend avec 12 nouvelles légendes, de nouveaux objets, des réimpressions d’Origins ainsi que des runes et tokens hors set numéroté.",
+    subtitleEn:
+      "The collection expands with 12 new legends, new gear, Origins reprints, plus runes and tokens outside the numbered set.",
     release: "13 février 2026",
+    releaseEn: "13 February 2026",
     baseSize: 221,
     expansionId: 6399,
     accent: "#f07b62",
@@ -46,7 +53,10 @@ export const SETS: SetDefinition[] = [
     name: "Unleashed",
     subtitle:
       "Le troisième set introduit 12 nouvelles légendes, des réimpressions d’anciens sets et la rareté Ultime avec Baron Nashor.",
+    subtitleEn:
+      "The third set introduces 12 new legends, reprints from earlier sets and the Ultimate rarity with Baron Nashor.",
     release: "8 mai 2026",
+    releaseEn: "8 May 2026",
     baseSize: 219,
     expansionId: 6491,
     accent: "#52cbb7",
@@ -59,7 +69,10 @@ export const SETS: SetDefinition[] = [
     name: "Vendetta",
     subtitle:
       "Le quatrième set ajoute 9 nouvelles légendes, des réimpressions des trois sets précédents, 22 Rival Overnumbered en 11 diptyques et les Crystal Rose.",
+    subtitleEn:
+      "The fourth set adds 9 new legends, reprints from the first three sets, 22 Rival Overnumbered cards in 11 diptychs, and Crystal Rose cards.",
     release: "31 juillet 2026",
+    releaseEn: "31 July 2026",
     baseSize: 166,
     expansionId: 6587,
     accent: "#aa83ff",
@@ -80,6 +93,14 @@ const FRENCH_SET_NAMES: Record<SetCode, string> = {
 
 export function getSetDisplayName(set: SetDefinition, language: "fr" | "en") {
   return language === "fr" ? FRENCH_SET_NAMES[set.code] : set.name;
+}
+
+export function getSetSubtitle(set: SetDefinition, language: "fr" | "en") {
+  return language === "en" ? set.subtitleEn : set.subtitle;
+}
+
+export function getSetRelease(set: SetDefinition, language: "fr" | "en") {
+  return language === "en" ? set.releaseEn : set.release;
 }
 
 export function getSetBySlug(slug: string) {

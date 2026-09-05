@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { getSetDisplayName, getSetHref, SETS, type SetCode } from "@/lib/sets";
 import { useSiteLanguage } from "@/app/lib/site-language";
 
-export function SiteHeader({ activeSetCode, showLanguageSwitcher = false }: { activeSetCode?: SetCode; showLanguageSwitcher?: boolean }) {
+export function SiteHeader({ activeSetCode, showLanguageSwitcher = true }: { activeSetCode?: SetCode; showLanguageSwitcher?: boolean }) {
   const navRef = useRef<HTMLElement | null>(null);
   const [hints, setHints] = useState({ left: false, right: false });
   const { language, setLanguage } = useSiteLanguage();

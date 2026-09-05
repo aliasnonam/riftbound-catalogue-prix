@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 
 import { CachedCardImage } from "@/app/components/offline-image";
+import { useSiteLanguage } from "@/app/lib/site-language";
 
 type PreviewPlacement = { left: number; top: number; width: number };
 type PreviewState = { mode: "hover"; placement: PreviewPlacement } | { mode: "dialog" };
@@ -27,6 +28,8 @@ function previewPlacement(rect: DOMRect): PreviewPlacement {
 }
 
 export function CardPreviewThumb({ className, imageUrl, name }: { className: string; imageUrl: string | null; name: string }) {
+  const { language } = useSiteLanguage();
+  const en = language === "en";
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -72,10 +75,10 @@ export function CardPreviewThumb({ className, imageUrl, name }: { className: str
 
   if (!imageUrl || failed) return <div className={`${className} card-preview-unavailable`}><span aria-hidden="true">◇</span></div>;
   const previewLayer = preview ? createPortal(
-    preview.mode === "hover" ? <div className="card-preview-popover" style={preview.placement} role="img" aria-label={`Aperçu agrandi de la carte ${name}`}><CachedCardImage src={imageUrl} alt="" /></div> :
-      <div className="card-preview-backdrop" role="presentation" onPointerDown={() => closePreview(true)}><div className="card-preview-dialog" role="dialog" aria-modal="true" aria-label={`Aperçu agrandi de la carte ${name}`} onPointerDown={(event) => event.stopPropagation()}><button ref={closeRef} className="card-preview-close" type="button" aria-label="Fermer l’aperçu" onClick={() => closePreview(true)}>×</button><CachedCardImage src={imageUrl} alt={`Carte ${name}`} /><p>{name}</p></div></div>,
+    preview.mode === "hover" ? <div className="card-preview-popover" style={preview.placement} role="img" aria-label={(en ? "Enlarged preview of " : "Aperçu agrandi de la carte ") + name}><CachedCardImage src={imageUrl} alt="" /></div> :
+      <div className="card-preview-backdrop" role="presentation" onPointerDown={() => closePreview(true)}><div className="card-preview-dialog" role="dialog" aria-modal="true" aria-label={(en ? "Enlarged preview of " : "Aperçu agrandi de la carte ") + name} onPointerDown={(event) => event.stopPropagation()}><button ref={closeRef} className="card-preview-close" type="button" aria-label={en ? "Close preview" : "Fermer l’aperçu"} onClick={() => closePreview(true)}>×</button><CachedCardImage src={imageUrl} alt={(en ? "Card " : "Carte ") + name} /><p>{name}</p></div></div>,
     document.body,
   ) : null;
 
-  return <><button ref={triggerRef} className={`${className} card-preview-trigger`} type="button" aria-label={`Agrandir la carte ${name}`} title="Survoler pour agrandir · cliquer pour ouvrir" onPointerEnter={() => { if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onPointerLeave={() => setPreview((current) => current?.mode === "hover" ? null : current)} onFocus={() => { if (!suppressFocusPreviewRef.current && window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onBlur={() => setPreview((current) => current?.mode === "hover" ? null : current)} onClick={() => setPreview({ mode: "dialog" })}><CachedCardImage src={imageUrl} alt="" loading="lazy" onError={() => { setFailedImageUrl(imageUrl); setPreview(null); }} /><span className="card-preview-icon" aria-hidden="true">⌕</span></button>{previewLayer}</>;
+  return <><button ref={triggerRef} className={`${className} card-preview-trigger`} type="button" aria-label={(en ? "Enlarge card " : "Agrandir la carte ") + name} title={en ? "Hover to enlarge · click to open" : "Survoler pour agrandir · cliquer pour ouvrir"} onPointerEnter={() => { if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onPointerLeave={() => setPreview((current) => current?.mode === "hover" ? null : current)} onFocus={() => { if (!suppressFocusPreviewRef.current && window.matchMedia("(hover: hover) and (pointer: fine)").matches) openHoverPreview(); }} onBlur={() => setPreview((current) => current?.mode === "hover" ? null : current)} onClick={() => setPreview({ mode: "dialog" })}><CachedCardImage src={imageUrl} alt="" loading="lazy" onError={() => { setFailedImageUrl(imageUrl); setPreview(null); }} /><span className="card-preview-icon" aria-hidden="true">⌕</span></button>{previewLayer}</>;
 }
