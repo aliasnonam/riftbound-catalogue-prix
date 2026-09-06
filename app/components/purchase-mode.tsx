@@ -19,13 +19,62 @@ import {
 import { useCollection } from "@/hooks/use-collection";
 import { usePurchaseSessions } from "@/hooks/use-purchase-sessions";
 
-const FRAME_INTERVAL_MS = 650;
+// The preview stays the native MediaStream. These values apply only to the
+// separate OCR work so it cannot starve the Android WebView's video renderer.
+const FRAME_INTERVAL_MS = 850;
+const AUTOFOCUS_SETTLE_MS = 850;
+const ANALYSIS_MAX_WIDTH = 1280;
+const CAMERA_DEBUG = typeof window !== "undefined" && window.location.hostname === "localhost";
 const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
 
 type ReaderState = "starting" | "scanning" | "error";
 type CachedPriceStatus = { updatedAt?: string };
 type ZoomRange = { min: number; max: number; step: number };
-type CameraTrack = MediaStreamTrack & { getCapabilities?: () => MediaTrackCapabilities & { zoom?: ZoomRange; focusMode?: string[] }; getSettings?: () => MediaTrackSettings; applyConstraints: (constraints: MediaTrackConstraints) => Promise<void> };
+type CameraCapabilities = MediaTrackCapabilities & { zoom?: ZoomRange; focusMode?: string[] };
+type CameraSettings = MediaTrackSettings & { focusMode?: string; resizeMode?: string; zoom?: number };
+type CameraTrack = Omit<MediaStreamTrack, "getCapabilities" | "getSettings" | "applyConstraints"> & { getCapabilities?: () => CameraCapabilities; getSettings?: () => CameraSettings; applyConstraints: (constraints: MediaTrackConstraints) => Promise<void> };
+type CameraConstraintSet = MediaTrackConstraintSet & { focusMode?: string; resizeMode?: string; zoom?: number };
+
+const REAR_CAMERA = /back|rear|environment/i;
+const SECONDARY_CAMERA = /ultra|macro|tele/i;
+const PRIMARY_CAMERA = /main|wide|standard/i;
+
+function cameraConstraints(deviceId?: string, exactEnvironment = true): MediaTrackConstraints {
+  return {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { [exactEnvironment ? "exact" : "ideal"]: "environment" } }),
+    // FHD at 30 fps is usually the sharpest/stablest WebView mode on Android.
+    // An "ideal" 4K request can select a soft, heavily processed stream.
+    width: { min: 1280, ideal: 1920 },
+    height: { min: 720, ideal: 1080 },
+    frameRate: { ideal: 30, max: 30 },
+    resizeMode: "none",
+  } as MediaTrackConstraints & CameraConstraintSet;
+}
+
+async function waitForVideoDimensions(video: HTMLVideoElement) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (video.videoWidth && video.videoHeight) return;
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+  }
+}
+
+function logCameraDiagnostics(track: CameraTrack | undefined, video: HTMLVideoElement, devices: MediaDeviceInfo[]) {
+  if (!CAMERA_DEBUG) return;
+  const settings = track?.getSettings?.();
+  const device = devices.find((item) => item.deviceId === settings?.deviceId);
+  console.group("[Riftbound purchase scanner] camera diagnostics");
+  console.log("device label", device?.label || "unknown");
+  console.log("deviceId", settings?.deviceId || "unknown");
+  console.log("video dimensions", `${video.videoWidth} × ${video.videoHeight}`);
+  console.log("track settings", settings);
+  console.log("track capabilities", track?.getCapabilities?.());
+  console.log("focusMode", settings?.focusMode || "not reported");
+  console.log("frameRate", settings?.frameRate || "not reported");
+  console.log("aspectRatio", settings?.aspectRatio || "not reported");
+  console.log("resizeMode", settings?.resizeMode || "not reported");
+  console.log("zoom", settings?.zoom || "not reported");
+  console.groupEnd();
+}
 
 export function PurchaseMode({ impressions }: { impressions: CollectionImpression[] }) {
   const { language } = useSiteLanguage();
@@ -77,6 +126,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const intervalRef = useRef<number | null>(null);
   const workingRef = useRef(false);
   const lastDetectedIdRef = useRef<string | null>(null);
+  const autofocusReadyAtRef = useRef(0);
   const [readerState, setReaderState] = useState<ReaderState>("starting");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<ResolvedCardScan | null>(null);
@@ -118,6 +168,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const stopCamera = () => {
     if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
     intervalRef.current = null;
+    autofocusReadyAtRef.current = 0;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
@@ -131,37 +182,40 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         const current = await Camera.checkPermissions();
         const permission = current.camera === "granted" ? current : await Camera.requestPermissions({ permissions: ["camera"] });
         if (permission.camera !== "granted") throw new Error("permission");
-        // Do not force the camera into a portrait aspect ratio. Android then
-        // commonly falls back to a small WebView stream before CSS enlarges it.
-        // First request a native 4K/FHD back-camera feed without resampling;
-        // only fall back to 1080p when the sensor cannot provide it.
+        // Do not force a portrait aspect ratio: the preview can crop it itself.
+        // Start with the standard rear camera at FHD/30, a more reliable
+        // autofocus mode in Android WebView than a requested pseudo-4K stream.
         let stream: MediaStream;
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: "environment" },
-              width: { min: 1920, ideal: 3840 },
-              height: { min: 1080, ideal: 2160 },
-              frameRate: { ideal: 30, max: 30 },
-              resizeMode: "none",
-            },
+            video: cameraConstraints(),
             audio: false,
           });
         } catch {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: "environment" },
-              width: { min: 1280, ideal: 1920 },
-              height: { min: 720, ideal: 1080 },
-              frameRate: { ideal: 30, max: 30 },
-              resizeMode: "none",
-            },
+            video: cameraConstraints(undefined, false),
             audio: false,
           });
         }
         if (cancelled) { stream.getTracks().forEach((track) => track.stop()); return; }
         streamRef.current = stream;
-        const track = stream.getVideoTracks()[0] as CameraTrack | undefined;
+        let track = stream.getVideoTracks()[0] as CameraTrack | undefined;
+        const devices = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
+        const selectedSettings = track?.getSettings?.();
+        const selectedDevice = devices.find((device) => device.deviceId === selectedSettings?.deviceId);
+        const primaryRearDevice = devices
+          .filter((device) => device.kind === "videoinput" && REAR_CAMERA.test(device.label) && !SECONDARY_CAMERA.test(device.label))
+          .sort((left, right) => Number(PRIMARY_CAMERA.test(right.label)) - Number(PRIMARY_CAMERA.test(left.label)))[0];
+        // Switch only when Android explicitly reports a secondary lens and a
+        // separate, explicitly named main/wide lens is available. Generic
+        // labels are deliberately left alone instead of guessing a deviceId.
+        if (selectedDevice && primaryRearDevice && selectedDevice.deviceId !== primaryRearDevice.deviceId && SECONDARY_CAMERA.test(selectedDevice.label) && PRIMARY_CAMERA.test(primaryRearDevice.label)) {
+          stream.getTracks().forEach((cameraTrack) => cameraTrack.stop());
+          stream = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(primaryRearDevice.deviceId), audio: false });
+          if (cancelled) { stream.getTracks().forEach((cameraTrack) => cameraTrack.stop()); return; }
+          streamRef.current = stream;
+          track = stream.getVideoTracks()[0] as CameraTrack | undefined;
+        }
         const capabilities = track?.getCapabilities?.();
         if (capabilities?.zoom) {
           setZoomRange(capabilities.zoom);
@@ -171,18 +225,25 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         }
         const settings = track?.getSettings?.();
         setPreviewResolution(settings?.width && settings.height ? `${settings.width} × ${settings.height}` : null);
-        // These are best-effort settings: Android applies them only when the
-        // camera exposes the capability, without degrading compatible devices.
-        void track?.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] }).catch(() => undefined);
+        // Applying focus mode conditionally avoids restarting tracks on phones
+        // that do not expose manual autofocus controls to WebView.
         if (!videoRef.current) return;
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        if (capabilities?.focusMode?.includes("continuous")) {
+          await track?.applyConstraints({ advanced: [{ focusMode: "continuous" } as CameraConstraintSet] }).catch(() => undefined);
+        }
+        await waitForVideoDimensions(videoRef.current);
+        const actualSettings = track?.getSettings?.();
+        setPreviewResolution(videoRef.current.videoWidth && videoRef.current.videoHeight ? `${videoRef.current.videoWidth} × ${videoRef.current.videoHeight}` : (actualSettings?.width && actualSettings.height ? `${actualSettings.width} × ${actualSettings.height}` : null));
+        logCameraDiagnostics(track, videoRef.current, devices);
         if (cancelled) return;
+        autofocusReadyAtRef.current = performance.now() + AUTOFOCUS_SETTLE_MS;
         setReaderState("scanning");
         const analyseFrame = async () => {
           const video = videoRef.current;
           const canvas = canvasRef.current;
-          if (!video || !canvas || workingRef.current || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+          if (!video || !canvas || workingRef.current || performance.now() < autofocusReadyAtRef.current || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
           workingRef.current = true;
           try {
             const width = video.videoWidth;
@@ -199,14 +260,16 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
             }
             const sourceX = Math.round((width - sourceWidth) / 2);
             const sourceY = Math.round((height - sourceHeight) / 2);
-            canvas.width = Math.min(2048, sourceWidth);
+            // This smaller canvas is OCR-only. It is never assigned to the
+            // video element, so reducing its work preserves preview FPS.
+            canvas.width = Math.min(ANALYSIS_MAX_WIDTH, sourceWidth);
             canvas.height = Math.round(canvas.width / cardRatio);
             const context = canvas.getContext("2d");
             if (!context) return;
             context.imageSmoothingEnabled = true;
             context.imageSmoothingQuality = "high";
             context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
-            const base64Image = canvas.toDataURL("image/jpeg", 0.94).split(",")[1];
+            const base64Image = canvas.toDataURL("image/jpeg", 0.88).split(",")[1];
             if (!base64Image) return;
             const { CapacitorPluginMlKitTextRecognition } = await import("@pantrist/capacitor-plugin-ml-kit-text-recognition");
             const recognized = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image });
@@ -251,7 +314,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     const max = zoomRange.max;
     const normalized = Math.max(min, Math.min(next, max));
     setZoom(normalized);
-    void track.applyConstraints({ advanced: [{ zoom: normalized } as MediaTrackConstraintSet] }).catch(() => undefined);
+    void track.applyConstraints({ advanced: [{ zoom: normalized } as CameraConstraintSet] }).catch(() => undefined);
   };
   const scanHighDefinitionPhoto = async () => {
     setHighDefinitionCapture(true);
