@@ -5,6 +5,7 @@ import { Capacitor } from "@capacitor/core";
 
 import { CardPreviewThumb } from "@/app/components/catalog/CardPreview";
 import { useSiteLanguage } from "@/app/lib/site-language";
+import { PurchaseCamera, type NativePurchaseCamera, type PurchaseCameraDiagnostics } from "@/app/lib/native-purchase-camera";
 import { findCardFromDetectedText, findCardFromScan, parseCardScanText, type ResolvedCardScan } from "@/lib/card-scan";
 import type { CollectionImpression } from "@/lib/collection";
 import { getPrimaryVariantPrice, type PriceMode } from "@/lib/pricing";
@@ -124,7 +125,10 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const en = language === "en";
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraStageRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const nativeCameraRef = useRef<NativePurchaseCamera | null>(null);
+  const nativeListenerCleanupRef = useRef<(() => void) | null>(null);
   const intervalRef = useRef<number | null>(null);
   const workingRef = useRef(false);
   const lastDetectedIdRef = useRef<string | null>(null);
@@ -139,6 +143,8 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null);
   const [zoom, setZoom] = useState(1);
   const [previewResolution, setPreviewResolution] = useState<string | null>(null);
+  const [cameraBackend, setCameraBackend] = useState<"CameraX" | "Web" | null>(null);
+  const [cameraDiagnostics, setCameraDiagnostics] = useState<PurchaseCameraDiagnostics | null>(null);
   const [highDefinitionCapture, setHighDefinitionCapture] = useState(false);
   const [cameraRestart, setCameraRestart] = useState(0);
 
@@ -171,9 +177,79 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
     intervalRef.current = null;
     autofocusReadyAtRef.current = 0;
+    nativeListenerCleanupRef.current?.();
+    nativeListenerCleanupRef.current = null;
+    if (nativeCameraRef.current) {
+      void nativeCameraRef.current.stop().catch(() => undefined);
+      nativeCameraRef.current = null;
+      setCameraBackend(null);
+    }
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+  };
+
+  const startNativeCamera = async () => {
+    if (Capacitor.getPlatform() !== "android" || !cameraStageRef.current) return false;
+    const stage = cameraStageRef.current;
+    const options = () => {
+      const bounds = stage.getBoundingClientRect();
+      return { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height, devicePixelRatio: window.devicePixelRatio || 1 };
+    };
+    try {
+      const textListener = await PurchaseCamera.addListener("textRecognized", ({ text }) => resolveRecognizedText(text));
+      const diagnosticsListener = await PurchaseCamera.addListener("diagnostics", (diagnostics: PurchaseCameraDiagnostics) => {
+        setCameraDiagnostics((current) => ({ ...current, ...diagnostics }));
+        if (diagnostics.previewWidth && diagnostics.previewHeight) {
+          const analysis = diagnostics.analysisWidth && diagnostics.analysisHeight ? ` · OCR ${diagnostics.analysisWidth} × ${diagnostics.analysisHeight}` : "";
+          setPreviewResolution(`${diagnostics.previewWidth} × ${diagnostics.previewHeight}${analysis}`);
+        }
+        if (typeof diagnostics.minZoom === "number" && typeof diagnostics.maxZoom === "number") {
+          setZoomRange({ min: diagnostics.minZoom, max: diagnostics.maxZoom, step: 0.1 });
+          if (typeof diagnostics.zoom === "number") setZoom(diagnostics.zoom);
+        }
+      });
+      const focusListener = await PurchaseCamera.addListener("focusStatus", ({ success }) => {
+        setCameraDiagnostics((current) => current ? { ...current, focusSuccess: success } : current);
+      });
+      nativeListenerCleanupRef.current = () => {
+        void textListener.remove();
+        void diagnosticsListener.remove();
+        void focusListener.remove();
+      };
+      nativeCameraRef.current = PurchaseCamera;
+      const diagnostics = await PurchaseCamera.start(options());
+      setCameraDiagnostics(diagnostics);
+      if (diagnostics.previewWidth && diagnostics.previewHeight) {
+        const analysis = diagnostics.analysisWidth && diagnostics.analysisHeight ? ` · OCR ${diagnostics.analysisWidth} × ${diagnostics.analysisHeight}` : "";
+        setPreviewResolution(`${diagnostics.previewWidth} × ${diagnostics.previewHeight}${analysis}`);
+      }
+      if (typeof diagnostics.minZoom === "number" && typeof diagnostics.maxZoom === "number") {
+        setZoomRange({ min: diagnostics.minZoom, max: diagnostics.maxZoom, step: 0.1 });
+        if (typeof diagnostics.zoom === "number") setZoom(diagnostics.zoom);
+      }
+      const updateBounds = () => { void PurchaseCamera.updateBounds(options()).catch(() => undefined); };
+      const scrollContainer = stage.closest(".purchase-scanner-backdrop");
+      window.addEventListener("resize", updateBounds);
+      scrollContainer?.addEventListener("scroll", updateBounds, { passive: true });
+      nativeListenerCleanupRef.current = () => {
+        window.removeEventListener("resize", updateBounds);
+        scrollContainer?.removeEventListener("scroll", updateBounds);
+        void textListener.remove();
+        void diagnosticsListener.remove();
+        void focusListener.remove();
+      };
+      setCameraBackend("CameraX");
+      setReaderState("scanning");
+      return true;
+    } catch {
+      nativeListenerCleanupRef.current?.();
+      nativeListenerCleanupRef.current = null;
+      void PurchaseCamera.stop().catch(() => undefined);
+      nativeCameraRef.current = null;
+      setCameraDiagnostics(null);
+      return false;
+    }
   };
 
   useEffect(() => {
@@ -184,6 +260,13 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         const current = await Camera.checkPermissions();
         const permission = current.camera === "granted" ? current : await Camera.requestPermissions({ permissions: ["camera"] });
         if (permission.camera !== "granted") throw new Error("permission");
+        // Android uses the native CameraX bridge for preview, continuous AF,
+        // tap-to-focus and native zoom. Keep getUserMedia below as the Web
+        // fallback only if the bridge is unavailable.
+        if (await startNativeCamera()) {
+          if (cancelled) stopCamera();
+          return;
+        }
         // Do not force a portrait aspect ratio: the preview can crop it itself.
         // Start with the standard rear camera at FHD/30, a more reliable
         // autofocus mode in Android WebView than a requested pseudo-4K stream.
@@ -241,6 +324,8 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         logCameraDiagnostics(track, videoRef.current, devices);
         if (cancelled) return;
         autofocusReadyAtRef.current = performance.now() + AUTOFOCUS_SETTLE_MS;
+        setCameraBackend("Web");
+        setCameraDiagnostics(null);
         setReaderState("scanning");
         const analyseFrame = async () => {
           const video = videoRef.current;
@@ -310,12 +395,17 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     setAdded(true);
   };
   const updateZoom = (next: number) => {
-    const track = streamRef.current?.getVideoTracks()[0] as CameraTrack | undefined;
-    if (!zoomRange || !track) return;
+    if (!zoomRange) return;
     const min = zoomRange.min;
     const max = zoomRange.max;
     const normalized = Math.max(min, Math.min(next, max));
     setZoom(normalized);
+    if (nativeCameraRef.current) {
+      void nativeCameraRef.current.setZoomRatio({ zoom: normalized }).catch(() => undefined);
+      return;
+    }
+    const track = streamRef.current?.getVideoTracks()[0] as CameraTrack | undefined;
+    if (!track) return;
     void track.applyConstraints({ advanced: [{ zoom: normalized } as CameraConstraintSet] }).catch(() => undefined);
   };
   const scanHighDefinitionPhoto = async () => {
@@ -355,12 +445,21 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       <button className="collection-scanner-close" type="button" aria-label={en ? "Close purchase mode" : "Fermer le mode achat"} onClick={() => { stopCamera(); onClose(); }}>×</button>
       <p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p>
       <h2 id="purchase-scanner-title">{en ? "Scan one card at a time" : "Scanne une carte à la fois"}</h2>
-      <div className="purchase-camera-stage">
+      <div ref={cameraStageRef} className={`purchase-camera-stage${cameraBackend === "CameraX" ? " is-native-camera" : ""}`}>
         <video ref={videoRef} autoPlay muted playsInline />
         <div className="purchase-scan-guide" aria-hidden="true"><span>{en ? "CARD" : "CARTE"}</span></div>
         <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (en ? "Move to the next card when it is detected." : "Passe à la carte suivante une fois détectée.")}</p>
       </div>
-      {previewResolution ? <p className="purchase-camera-quality">{en ? `Live preview: ${previewResolution}` : `Aperçu direct : ${previewResolution}`}</p> : null}
+      {previewResolution ? <p className="purchase-camera-quality">{en ? `${cameraBackend === "CameraX" ? "CameraX" : "Live preview"}: ${previewResolution}` : `${cameraBackend === "CameraX" ? "CameraX" : "Aperçu direct"} : ${previewResolution}`}</p> : null}
+      {cameraDiagnostics?.debug ? <dl className="purchase-camera-debug">
+        <div><dt>{en ? "Backend" : "Backend"}</dt><dd>{cameraDiagnostics.backend}</dd></div>
+        <div><dt>{en ? "Camera" : "Caméra"}</dt><dd>{cameraDiagnostics.cameraId || "?"} · {cameraDiagnostics.lens || "?"}</dd></div>
+        <div><dt>{en ? "Streams" : "Flux"}</dt><dd>{cameraDiagnostics.previewWidth && cameraDiagnostics.previewHeight ? `${cameraDiagnostics.previewWidth}×${cameraDiagnostics.previewHeight}` : "?"} / OCR {cameraDiagnostics.analysisWidth && cameraDiagnostics.analysisHeight ? `${cameraDiagnostics.analysisWidth}×${cameraDiagnostics.analysisHeight}` : "?"} @{cameraDiagnostics.frameRate ?? "?"} fps</dd></div>
+        <div><dt>AF</dt><dd>{cameraDiagnostics.afMode || "?"} · {cameraDiagnostics.afState || "?"}</dd></div>
+        <div><dt>AE</dt><dd>{cameraDiagnostics.aeState || "?"}</dd></div>
+        <div><dt>{en ? "Zoom" : "Zoom"}</dt><dd>×{cameraDiagnostics.zoom?.toFixed(1) ?? "?"} ({cameraDiagnostics.minZoom?.toFixed(1) ?? "?"}–{cameraDiagnostics.maxZoom?.toFixed(1) ?? "?"})</dd></div>
+        <div><dt>{en ? "Manual focus" : "Focus manuel"}</dt><dd>{cameraDiagnostics.focusSuccess === undefined ? "—" : cameraDiagnostics.focusSuccess ? (en ? "success" : "réussi") : (en ? "failed" : "échoué")}</dd></div>
+      </dl> : null}
       {zoomRange ? <label className="purchase-zoom-control">{en ? "Native camera zoom" : "Zoom caméra natif"}<input type="range" min={zoomRange.min} max={zoomRange.max} step={zoomRange.step || 0.1} value={zoom} onChange={(event) => updateZoom(Number(event.target.value))} /><span>×{zoom.toFixed(1)}</span></label> : <p className="purchase-camera-quality">{en ? "This phone does not expose live native zoom. Use the HD photo for the phone camera’s pinch zoom." : "Ce téléphone ne propose pas son zoom natif en direct. Utilise la photo HD pour le zoom pincé de l’appareil photo."}</p>}
       <button type="button" className="purchase-hd-capture" disabled={highDefinitionCapture} onClick={() => { void scanHighDefinitionPhoto(); }}>{highDefinitionCapture ? (en ? "Opening HD camera…" : "Ouverture de la caméra HD…") : (en ? "Take an HD photo (native zoom)" : "Prendre une photo HD (zoom natif)")}</button>
       <canvas ref={canvasRef} hidden />
