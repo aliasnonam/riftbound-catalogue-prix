@@ -60,8 +60,7 @@ export function CardScanner({ impressions }: { impressions: CollectionImpression
       const photo = await Camera.getPhoto({
         source: CameraSource.Camera,
         resultType: CameraResultType.Base64,
-        quality: 90,
-        width: 1800,
+        quality: 100,
         correctOrientation: true,
         saveToGallery: false,
       });

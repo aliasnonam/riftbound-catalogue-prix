@@ -20,6 +20,7 @@ import { useCollection } from "@/hooks/use-collection";
 import { usePurchaseSessions } from "@/hooks/use-purchase-sessions";
 
 const FRAME_INTERVAL_MS = 650;
+const SOFTWARE_ZOOM_MAX = 3.5;
 const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
 
 type ReaderState = "starting" | "scanning" | "error";
@@ -86,6 +87,24 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [priceUpdatedAt, setPriceUpdatedAt] = useState<string | null>(null);
   const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [hardwareZoomActive, setHardwareZoomActive] = useState(false);
+  const [highDefinitionCapture, setHighDefinitionCapture] = useState(false);
+  const [cameraRestart, setCameraRestart] = useState(0);
+  const zoomRef = useRef(1);
+  const hardwareZoomActiveRef = useRef(false);
+
+  const resolveRecognizedText = (detectedText: string, force = false) => {
+    const parsed = parseCardScanText(detectedText);
+    const resolved = parsed.ok
+      ? findCardFromScan(parsed.value, impressions, detectedText)
+      : findCardFromDetectedText(detectedText, impressions);
+    if (resolved.kind !== "match" || (!force && resolved.impression.impressionId === lastDetectedIdRef.current)) return resolved;
+    lastDetectedIdRef.current = resolved.impression.impressionId;
+    setResult(resolved);
+    setSellerInput("");
+    setAdded(sessionItems.includes(resolved.impression.impressionId));
+    return resolved;
+  };
 
   useEffect(() => {
     const readStatus = () => {
@@ -104,6 +123,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     intervalRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
   };
 
   useEffect(() => {
@@ -117,9 +137,12 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 3840 },
-            height: { ideal: 2160 },
+            // Ask Android for a portrait, high-detail feed. The previous
+            // landscape request was then stretched into a tall card frame.
+            width: { ideal: 2160 },
+            height: { ideal: 3840 },
             aspectRatio: { ideal: 9 / 16 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: false,
         });
@@ -130,6 +153,11 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         if (capabilities?.zoom) {
           setZoomRange(capabilities.zoom);
           setZoom(Math.max(capabilities.zoom.min, Math.min(1, capabilities.zoom.max)));
+          zoomRef.current = Math.max(capabilities.zoom.min, Math.min(1, capabilities.zoom.max));
+        } else {
+          setZoomRange(null);
+          setHardwareZoomActive(false);
+          hardwareZoomActiveRef.current = false;
         }
         // These are best-effort settings: Android applies them only when the
         // camera exposes the capability, without degrading compatible devices.
@@ -148,13 +176,15 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
             const width = video.videoWidth;
             const height = video.videoHeight;
             if (!width || !height) return;
-            // The OCR crop has the physical 63:88 card ratio and includes the
-            // entire bottom line instead of using the wide camera frame.
+            // The OCR crop follows the physical 63:88 mm card ratio. When a
+            // phone does not expose hardware zoom, the same slider performs a
+            // software crop for both the preview and the OCR input.
             const cardRatio = 63 / 88;
-            let sourceHeight = Math.round(height * 0.86);
+            const visualZoom = hardwareZoomActiveRef.current ? 1 : zoomRef.current;
+            let sourceHeight = Math.round((height * 0.92) / visualZoom);
             let sourceWidth = Math.round(sourceHeight * cardRatio);
-            if (sourceWidth > width * 0.86) {
-              sourceWidth = Math.round(width * 0.86);
+            if (sourceWidth > (width * 0.92) / visualZoom) {
+              sourceWidth = Math.round((width * 0.92) / visualZoom);
               sourceHeight = Math.round(sourceWidth / cardRatio);
             }
             const sourceX = Math.round((width - sourceWidth) / 2);
@@ -166,15 +196,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
             if (!base64Image) return;
             const { CapacitorPluginMlKitTextRecognition } = await import("@pantrist/capacitor-plugin-ml-kit-text-recognition");
             const recognized = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image });
-            const parsed = parseCardScanText(recognized.text);
-            const resolved = parsed.ok
-              ? findCardFromScan(parsed.value, impressions, recognized.text)
-              : findCardFromDetectedText(recognized.text, impressions);
-            if (resolved.kind !== "match" || resolved.impression.impressionId === lastDetectedIdRef.current) return;
-            lastDetectedIdRef.current = resolved.impression.impressionId;
-            setResult(resolved);
-            setSellerInput("");
-            setAdded(sessionItems.includes(resolved.impression.impressionId));
+            resolveRecognizedText(recognized.text);
           } catch {
             // OCR misses are expected during movement; keep the live camera usable.
           } finally {
@@ -194,7 +216,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   // The scanner owns its stream for its full lifetime. Recreating it only when
   // the session changes keeps the preview fluid while price input changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, cameraRestart]);
 
   const match = result?.kind === "match" ? result.impression : null;
   const sellerPrice = normaliseSellerPrice(sellerInput);
@@ -210,8 +232,50 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   };
   const updateZoom = (next: number) => {
     const track = streamRef.current?.getVideoTracks()[0] as CameraTrack | undefined;
-    setZoom(next);
-    void track?.applyConstraints({ advanced: [{ zoom: next } as MediaTrackConstraintSet] }).catch(() => undefined);
+    const min = zoomRange?.min ?? 1;
+    const max = zoomRange?.max ?? SOFTWARE_ZOOM_MAX;
+    const normalized = Math.max(min, Math.min(next, max));
+    zoomRef.current = normalized;
+    setZoom(normalized);
+    if (!zoomRange || !track) return;
+    void track.applyConstraints({ advanced: [{ zoom: normalized } as MediaTrackConstraintSet] }).then(() => {
+      hardwareZoomActiveRef.current = true;
+      setHardwareZoomActive(true);
+    }).catch(() => {
+      hardwareZoomActiveRef.current = false;
+      setHardwareZoomActive(false);
+    });
+  };
+  const scanHighDefinitionPhoto = async () => {
+    setHighDefinitionCapture(true);
+    setReaderState("starting");
+    stopCamera();
+    try {
+      const [{ Camera, CameraResultType, CameraSource }, { CapacitorPluginMlKitTextRecognition }] = await Promise.all([
+        import("@capacitor/camera"),
+        import("@pantrist/capacitor-plugin-ml-kit-text-recognition"),
+      ]);
+      const photo = await Camera.getPhoto({
+        source: CameraSource.Camera,
+        resultType: CameraResultType.Base64,
+        quality: 100,
+        correctOrientation: true,
+        saveToGallery: false,
+      });
+      if (!photo.base64String) throw new Error("image unavailable");
+      const recognized = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image: photo.base64String });
+      const resolved = resolveRecognizedText(recognized.text, true);
+      if (resolved.kind !== "match") {
+        setMessage(en ? "This photo did not identify one card. Try again with the name or collector line sharp." : "Cette photo n’a pas identifié une seule carte. Réessaie avec le nom ou le code net.");
+      }
+    } catch (error) {
+      if (!(error instanceof Error && /cancel/i.test(error.message))) {
+        setMessage(en ? "The HD photo could not be read. Try again in even light without reflections." : "La photo HD n’a pas pu être lue. Réessaie avec une lumière uniforme, sans reflet.");
+      }
+    } finally {
+      setHighDefinitionCapture(false);
+      setCameraRestart((value) => value + 1);
+    }
   };
 
   return <div className="purchase-scanner-backdrop" role="presentation">
@@ -220,11 +284,12 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       <p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p>
       <h2 id="purchase-scanner-title">{en ? "Scan one card at a time" : "Scanne une carte à la fois"}</h2>
       <div className="purchase-camera-stage">
-        <video ref={videoRef} autoPlay muted playsInline />
+        <video ref={videoRef} autoPlay muted playsInline style={hardwareZoomActive ? undefined : { transform: `scale(${zoom})` }} />
         <div className="purchase-scan-guide" aria-hidden="true"><span>{en ? "CARD" : "CARTE"}</span></div>
         <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (en ? "Move to the next card when it is detected." : "Passe à la carte suivante une fois détectée.")}</p>
       </div>
-      {zoomRange ? <label className="purchase-zoom-control">{en ? "Camera zoom" : "Zoom caméra"}<input type="range" min={zoomRange.min} max={zoomRange.max} step={zoomRange.step || 0.1} value={zoom} onChange={(event) => updateZoom(Number(event.target.value))} /><span>×{zoom.toFixed(1)}</span></label> : null}
+      <label className="purchase-zoom-control">{en ? "Camera zoom" : "Zoom caméra"}<input type="range" min={zoomRange?.min ?? 1} max={zoomRange?.max ?? SOFTWARE_ZOOM_MAX} step={zoomRange?.step || 0.1} value={zoom} onChange={(event) => updateZoom(Number(event.target.value))} /><span>×{zoom.toFixed(1)}</span></label>
+      <button type="button" className="purchase-hd-capture" disabled={highDefinitionCapture} onClick={() => { void scanHighDefinitionPhoto(); }}>{highDefinitionCapture ? (en ? "Opening HD camera…" : "Ouverture de la caméra HD…") : (en ? "Take an HD photo (native zoom)" : "Prendre une photo HD (zoom natif)")}</button>
       <canvas ref={canvasRef} hidden />
       <p className="purchase-privacy">{en ? "Analysis is performed locally. No photo or video is saved." : "Analyse effectuée localement. Aucune photo ni vidéo n’est enregistrée."}</p>
       {match ? <div className="purchase-scan-result">

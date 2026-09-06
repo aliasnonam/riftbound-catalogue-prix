@@ -115,6 +115,8 @@ export type CatalogRow = {
   number: string;
   collectorNumber: number;
   name: string;
+  /** Names that can appear on a physical card, kept for offline OCR matching. */
+  scanNames: string[];
   type: string;
   rarity: string;
   domains: string[];
@@ -1062,6 +1064,7 @@ export function buildCatalog(args: {
           number: code,
           collectorNumber: card.collector_number,
           name: splitName,
+          scanNames: [splitName, card.name, card.localized_name].filter((value): value is string => Boolean(value)),
           type: splitType,
           rarity: card.classification.rarity,
           domains: card.classification.domain,
@@ -1171,6 +1174,14 @@ export function buildCatalog(args: {
         number,
         collectorNumber,
         name: lineName,
+        scanNames: [
+          lineName,
+          representativeCard?.name,
+          representativeCard?.localized_name,
+          fallbackCard?.name,
+          fallbackCard?.localized_name,
+          fallbackProduct?.name,
+        ].filter((value): value is string => Boolean(value)),
         type: lineType,
         rarity:
           representative.variant.rarity ??

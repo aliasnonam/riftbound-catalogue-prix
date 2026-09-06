@@ -30,6 +30,34 @@ function normalizeDetectedName(value: string) {
     .trim();
 }
 
+function wordDistance(left: string, right: string) {
+  if (left === right) return 0;
+  if (Math.abs(left.length - right.length) > 1) return 2;
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= right.length; column += 1) {
+      current[column] = Math.min(
+        previous[column] + 1,
+        current[column - 1] + 1,
+        previous[column - 1] + (left[row - 1] === right[column - 1] ? 0 : 1),
+      );
+    }
+    for (let column = 0; column <= right.length; column += 1) previous[column] = current[column];
+  }
+  return previous[right.length];
+}
+
+function nameMatchScore(text: string, candidate: string) {
+  if (candidate.length < 4) return 0;
+  if (text.includes(candidate) || candidate.includes(text)) return 1;
+  const candidateWords = candidate.split(" ").filter((word) => word.length >= 3);
+  const detectedWords = text.split(" ").filter((word) => word.length >= 3);
+  if (candidateWords.length < 2 || detectedWords.length === 0) return 0;
+  const matched = candidateWords.filter((word) => detectedWords.some((detected) => wordDistance(word, detected) <= (word.length >= 7 ? 2 : 1))).length;
+  return matched / candidateWords.length;
+}
+
 function normalizeOcrText(value: string) {
   return value
     .toUpperCase()
@@ -93,9 +121,9 @@ export function findCardFromScan(scan: ParsedCardScan, impressions: CollectionIm
   const unique = [...new Map(numbered.map((impression) => [impression.impressionId, impression])).values()];
   if (unique.length === 0) return { kind: "not-found" };
   if (unique.length > 1) {
-    const normalizedName = detectedName.trim().toLocaleLowerCase("fr-FR");
+    const normalizedName = normalizeDetectedName(detectedName);
     const named = normalizedName
-      ? unique.filter((impression) => impression.row.name.toLocaleLowerCase("fr-FR").includes(normalizedName) || normalizedName.includes(impression.row.name.toLocaleLowerCase("fr-FR")))
+      ? unique.filter((impression) => (impression.row.scanNames ?? [impression.row.name]).some((name) => nameMatchScore(normalizedName, normalizeDetectedName(name)) >= 0.8))
       : [];
     if (named.length === 1) return { kind: "match", impression: named[0], confidence: "high" };
     return { kind: "ambiguous", candidates: unique };
@@ -111,17 +139,19 @@ export function findCardFromScan(scan: ParsedCardScan, impressions: CollectionIm
 export function findCardFromDetectedText(detectedText: string, impressions: CollectionImpression[]): ResolvedCardScan {
   const text = normalizeDetectedName(detectedText);
   if (!text) return { kind: "not-found" };
-  const matches = impressions.filter((impression) => {
-    const name = normalizeDetectedName(impression.row.name);
-    return name.length >= 4 && (text.includes(name) || name.includes(text));
-  });
+  const scored = impressions.map((impression) => ({
+    impression,
+    score: Math.max(...(impression.row.scanNames ?? [impression.row.name]).map((name) => nameMatchScore(text, normalizeDetectedName(name)))),
+  })).filter(({ score }) => score >= 0.8);
+  if (scored.length === 0) return { kind: "not-found" };
+  const bestScore = Math.max(...scored.map(({ score }) => score));
+  const matches = scored.filter(({ score }) => score === bestScore).map(({ impression }) => impression);
   const byCard = new Map<string, CollectionImpression[]>();
   for (const impression of matches) {
     const current = byCard.get(impression.row.id) ?? [];
     current.push(impression);
     byCard.set(impression.row.id, current);
   }
-  if (byCard.size === 0) return { kind: "not-found" };
   if (byCard.size > 1) return { kind: "ambiguous", candidates: [...byCard.values()].flat() };
   const candidates = [...byCard.values()][0];
   // Names identify the card but not necessarily a premium printing. The base

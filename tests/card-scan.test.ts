@@ -33,11 +33,23 @@ test("does not accept absent or competing collector lines", () => {
 test("uses an unambiguous detected card name as a local fallback", () => {
   const impressions = [{
     impressionId: "SFD:ahri", setCode: "SFD", setName: "Spiritforged",
-    row: { id: "ahri", name: "Ahri Inquisitive" },
+    row: { id: "ahri", name: "Ahri Inquisitive", scanNames: ["Ahri Inquisitive", "Ahri inquisitrice"] },
     variant: { kind: "base" },
   }] as CollectionImpression[];
   const resolved = findCardFromDetectedText("AHRI INQUISITIVE\nWhen I attack", impressions);
   assert.equal(resolved.kind, "match");
   if (resolved.kind !== "match") return;
   assert.equal(resolved.impression.impressionId, "SFD:ahri");
+});
+
+test("recognises a French physical-card name even when the current catalogue is English", () => {
+  const impressions = [{
+    impressionId: "OGN:wraith", setCode: "OGN", setName: "Origins",
+    row: { id: "wraith", name: "Wraith of Echoes", scanNames: ["Wraith of Echoes", "Spectre des échos"] },
+    variant: { kind: "base" },
+  }] as CollectionImpression[];
+  const resolved = findCardFromDetectedText("SPECTRE DES ECHOS", impressions);
+  assert.equal(resolved.kind, "match");
+  if (resolved.kind !== "match") return;
+  assert.equal(resolved.impression.impressionId, "OGN:wraith");
 });
