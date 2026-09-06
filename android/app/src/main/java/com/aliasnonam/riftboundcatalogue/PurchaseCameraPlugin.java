@@ -167,8 +167,13 @@ public class PurchaseCameraPlugin extends Plugin {
       roundedBackground.setCornerRadius(16f * getContext().getResources().getDisplayMetrics().density);
       scannerLayer.setBackground(roundedBackground);
       scannerLayer.setClipToOutline(true);
+      scannerLayer.setClipChildren(true);
+      scannerLayer.setClipToPadding(true);
       previewView = new PreviewView(getContext());
-      previewView.setImplementationMode(PreviewView.ImplementationMode.PERFORMANCE);
+      // TextureView composition is required here: the native view is placed
+      // inside a rounded WebView rectangle and SurfaceView cannot reliably
+      // clip or align to that rectangle during relayouts.
+      previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
       previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
       scannerLayer.addView(previewView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
       overlay = new ScannerOverlay();
@@ -181,6 +186,7 @@ public class PurchaseCameraPlugin extends Plugin {
       });
       ViewGroup root = getActivity().findViewById(android.R.id.content);
       root.addView(scannerLayer);
+      scannerLayer.bringToFront();
     }
     updateLayerBounds(call);
     scannerLayer.setVisibility(View.VISIBLE);
@@ -189,14 +195,27 @@ public class PurchaseCameraPlugin extends Plugin {
   private void updateLayerBounds(PluginCall call) {
     if (scannerLayer == null) return;
     float density = call.getDouble("devicePixelRatio", 1d).floatValue();
-    int x = Math.round(call.getDouble("x", 0d).floatValue() * density);
-    int y = Math.round(call.getDouble("y", 0d).floatValue() * density);
-    previewWidth = Math.max(1, Math.round(call.getDouble("width", 1d).floatValue() * density));
-    previewHeight = Math.max(1, Math.round(call.getDouble("height", 1d).floatValue() * density));
+    float viewportScale = call.getDouble("viewportScale", 1d).floatValue();
+    float pixelsPerCssPixel = density * Math.max(.1f, viewportScale);
+    // DOM bounds are relative to the WebView. android.R.id.content can have
+    // a different origin (notably after insets/orientation changes), so map
+    // through the actual WebView location instead of assuming (0, 0).
+    int[] rootLocation = new int[2];
+    int[] webLocation = new int[2];
+    ViewGroup root = getActivity().findViewById(android.R.id.content);
+    root.getLocationInWindow(rootLocation);
+    getBridge().getWebView().getLocationInWindow(webLocation);
+    int webOffsetX = webLocation[0] - rootLocation[0];
+    int webOffsetY = webLocation[1] - rootLocation[1];
+    int x = webOffsetX + Math.round(call.getDouble("x", 0d).floatValue() * pixelsPerCssPixel);
+    int y = webOffsetY + Math.round(call.getDouble("y", 0d).floatValue() * pixelsPerCssPixel);
+    previewWidth = Math.max(1, Math.round(call.getDouble("width", 1d).floatValue() * pixelsPerCssPixel));
+    previewHeight = Math.max(1, Math.round(call.getDouble("height", 1d).floatValue() * pixelsPerCssPixel));
     FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(previewWidth, previewHeight);
     params.leftMargin = x;
     params.topMargin = y;
     scannerLayer.setLayoutParams(params);
+    scannerLayer.bringToFront();
   }
 
   private void bindCamera(PluginCall call) {

@@ -6,6 +6,11 @@ import type { SetCode } from "@/lib/sets";
 export type CollectionStatus = "owned" | "missing";
 export type CollectionEntry = {
   status: CollectionStatus;
+  /**
+   * Number of copies owned for this printing. It is deliberately independent
+   * from set progress: one or more copies still completes one printing.
+   */
+  quantity?: number;
   foil?: true;
   /**
    * Moment where this printing was last added to the collection.
@@ -16,7 +21,7 @@ export type CollectionEntry = {
 };
 export type CollectionState = Record<string, CollectionEntry>;
 
-export const COLLECTION_BACKUP_VERSION = 2;
+export const COLLECTION_BACKUP_VERSION = 3;
 
 export type CollectionBackup = {
   version: typeof COLLECTION_BACKUP_VERSION;
@@ -79,6 +84,14 @@ export function isCollectionOwned(
   impressionId: string,
 ) {
   return getCollectionStatus(state, impressionId) === "owned";
+}
+
+export function getCollectionQuantity(
+  state: CollectionState,
+  impressionId: string,
+) {
+  const entry = state[impressionId];
+  return entry?.status === "owned" ? Math.max(1, entry.quantity ?? 1) : 0;
 }
 
 export function isCollectionFoil(
@@ -210,10 +223,39 @@ export function withCollectionStatus(
   const previous = state[impressionId];
   next[impressionId] = {
     status: "owned",
+    ...(previous?.quantity && previous.quantity > 1 ? { quantity: previous.quantity } : {}),
     ...(previous?.foil ? { foil: true } : {}),
     addedAt: previous?.addedAt ?? new Date().toISOString(),
   };
   return next;
+}
+
+/** Set an exact copy count while keeping legacy entries compact at one copy. */
+export function withCollectionQuantity(
+  state: CollectionState,
+  impressionId: string,
+  quantity: number,
+): CollectionState {
+  const normalizedQuantity = Math.max(0, Math.floor(quantity));
+  if (normalizedQuantity === 0) return withCollectionStatus(state, impressionId, "missing");
+  const previous = state[impressionId];
+  return {
+    ...state,
+    [impressionId]: {
+      status: "owned",
+      ...(normalizedQuantity > 1 ? { quantity: normalizedQuantity } : {}),
+      ...(previous?.foil ? { foil: true } : {}),
+      addedAt: previous?.addedAt ?? new Date().toISOString(),
+    },
+  };
+}
+
+export function incrementCollectionQuantity(
+  state: CollectionState,
+  impressionId: string,
+  amount = 1,
+) {
+  return withCollectionQuantity(state, impressionId, getCollectionQuantity(state, impressionId) + Math.max(1, Math.floor(amount)));
 }
 
 export function withCollectionFoil(
@@ -227,6 +269,7 @@ export function withCollectionFoil(
     ...state,
     [impression.impressionId]: {
       status: "owned",
+      ...(entry.quantity && entry.quantity > 1 ? { quantity: entry.quantity } : {}),
       ...(foil ? { foil: true } : {}),
       ...(entry.addedAt ? { addedAt: entry.addedAt } : {}),
     },
@@ -253,6 +296,9 @@ function isCollectionState(value: unknown): value is CollectionState {
       && !Array.isArray(entry)
       && ((entry as CollectionEntry).status === "owned" || (entry as CollectionEntry).status === "missing")
       && ((entry as CollectionEntry).foil === undefined || (entry as CollectionEntry).foil === true)
+      && ((entry as CollectionEntry).quantity === undefined
+        || (Number.isInteger((entry as CollectionEntry).quantity)
+          && (entry as CollectionEntry).quantity! > 0))
       && ((entry as CollectionEntry).addedAt === undefined
         || (typeof (entry as CollectionEntry).addedAt === "string"
           && Number.isFinite(Date.parse((entry as CollectionEntry).addedAt as string)))),
@@ -271,6 +317,9 @@ function normalizeCollectionState(value: unknown): CollectionState {
       if (candidate.status !== "owned") return [];
       return [[impressionId, {
         status: "owned",
+        ...(typeof candidate.quantity === "number" && Number.isInteger(candidate.quantity) && candidate.quantity > 1
+          ? { quantity: candidate.quantity }
+          : {}),
         ...(candidate.foil === true ? { foil: true } : {}),
         ...(typeof candidate.addedAt === "string" && Number.isFinite(Date.parse(candidate.addedAt))
           ? { addedAt: candidate.addedAt }
@@ -295,7 +344,7 @@ export function parseCollectionBackup(raw: string): CollectionBackupParseResult 
     const candidate = JSON.parse(raw) as unknown;
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return { ok: false, reason: "invalid" };
     const { version, exportedAt, collection } = candidate as Record<string, unknown>;
-    if (version !== 1 && version !== COLLECTION_BACKUP_VERSION) return { ok: false, reason: "unsupported-version" };
+    if (version !== 1 && version !== 2 && version !== COLLECTION_BACKUP_VERSION) return { ok: false, reason: "unsupported-version" };
     const normalized = normalizeCollectionState(collection);
     if (typeof exportedAt !== "string" || !isCollectionState(normalized)) return { ok: false, reason: "invalid" };
     return { ok: true, backup: { version: COLLECTION_BACKUP_VERSION, exportedAt, collection: normalized } };

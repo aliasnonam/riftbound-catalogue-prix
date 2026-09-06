@@ -33,6 +33,7 @@ const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR"
 type ReaderState = "starting" | "scanning" | "error";
 type CachedPriceStatus = { updatedAt?: string };
 type ZoomRange = { min: number; max: number; step: number };
+type PurchaseCardFilter = "missing" | "all";
 type CameraCapabilities = MediaTrackCapabilities & { zoom?: ZoomRange; focusMode?: string[] };
 type CameraSettings = MediaTrackSettings & { focusMode?: string; resizeMode?: string; zoom?: number };
 type CameraTrack = Omit<MediaStreamTrack, "getCapabilities" | "getSettings" | "applyConstraints"> & { getCapabilities?: () => CameraCapabilities; getSettings?: () => CameraSettings; applyConstraints: (constraints: MediaTrackConstraints) => Promise<void> };
@@ -41,6 +42,37 @@ type CameraConstraintSet = MediaTrackConstraintSet & { focusMode?: string; resiz
 const REAR_CAMERA = /back|rear|environment/i;
 const SECONDARY_CAMERA = /ultra|macro|tele/i;
 const PRIMARY_CAMERA = /main|wide|standard/i;
+
+// Reserve most of the control for the practical card-scanning range: 1x–3x.
+const LOW_ZOOM_END = 3;
+const LOW_ZOOM_SLIDER_SHARE = 0.78;
+const ZOOM_SLIDER_MAX = 1000;
+
+function clampZoom(value: number, range: ZoomRange) {
+  return Math.max(range.min, Math.min(value, range.max));
+}
+
+function sliderPositionToZoom(position: number, range: ZoomRange) {
+  const progress = Math.max(0, Math.min(1, position / ZOOM_SLIDER_MAX));
+  const lowEnd = Math.max(range.min, Math.min(LOW_ZOOM_END, range.max));
+  if (range.max <= lowEnd || lowEnd <= range.min) return range.min + (range.max - range.min) * progress;
+  if (progress <= LOW_ZOOM_SLIDER_SHARE) return range.min + (lowEnd - range.min) * (progress / LOW_ZOOM_SLIDER_SHARE);
+  const highProgress = (progress - LOW_ZOOM_SLIDER_SHARE) / (1 - LOW_ZOOM_SLIDER_SHARE);
+  return lowEnd * Math.pow(range.max / lowEnd, highProgress);
+}
+
+function zoomToSliderPosition(value: number, range: ZoomRange) {
+  const zoom = clampZoom(value, range);
+  const lowEnd = Math.max(range.min, Math.min(LOW_ZOOM_END, range.max));
+  if (range.max <= lowEnd || lowEnd <= range.min) return Math.round(((zoom - range.min) / Math.max(.0001, range.max - range.min)) * ZOOM_SLIDER_MAX);
+  if (zoom <= lowEnd) return Math.round(((zoom - range.min) / Math.max(.0001, lowEnd - range.min)) * LOW_ZOOM_SLIDER_SHARE * ZOOM_SLIDER_MAX);
+  const highProgress = Math.log(zoom / lowEnd) / Math.log(range.max / lowEnd);
+  return Math.round((LOW_ZOOM_SLIDER_SHARE + highProgress * (1 - LOW_ZOOM_SLIDER_SHARE)) * ZOOM_SLIDER_MAX);
+}
+
+function roundDisplayedZoom(value: number) {
+  return Math.round(value * 10) / 10;
+}
 
 function cameraConstraints(deviceId?: string, exactEnvironment = true): MediaTrackConstraints {
   return {
@@ -129,6 +161,8 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const streamRef = useRef<MediaStream | null>(null);
   const nativeCameraRef = useRef<NativePurchaseCamera | null>(null);
   const nativeListenerCleanupRef = useRef<(() => void) | null>(null);
+  const zoomFrameRef = useRef<number | null>(null);
+  const pendingZoomRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
   const workingRef = useRef(false);
   const lastDetectedIdRef = useRef<string | null>(null);
@@ -147,6 +181,15 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [cameraDiagnostics, setCameraDiagnostics] = useState<PurchaseCameraDiagnostics | null>(null);
   const [highDefinitionCapture, setHighDefinitionCapture] = useState(false);
   const [cameraRestart, setCameraRestart] = useState(0);
+  const [cardFilter, setCardFilter] = useState<PurchaseCardFilter>("missing");
+  const cardFilterRef = useRef(cardFilter);
+
+  useEffect(() => {
+    cardFilterRef.current = cardFilter;
+    lastDetectedIdRef.current = null;
+    setResult(null);
+    setSellerInput("");
+  }, [cardFilter]);
 
   const resolveRecognizedText = (detectedText: string, force = false) => {
     const parsed = parseCardScanText(detectedText);
@@ -155,6 +198,11 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       : findCardFromDetectedText(detectedText, impressions);
     if (resolved.kind !== "match" || (!force && resolved.impression.impressionId === lastDetectedIdRef.current)) return resolved;
     lastDetectedIdRef.current = resolved.impression.impressionId;
+    if (cardFilterRef.current === "missing" && collection.isOwned(resolved.impression.impressionId)) {
+      setResult(null);
+      setSellerInput("");
+      return resolved;
+    }
     setResult(resolved);
     setSellerInput("");
     setAdded(sessionItems.includes(resolved.impression.impressionId));
@@ -179,6 +227,9 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     autofocusReadyAtRef.current = 0;
     nativeListenerCleanupRef.current?.();
     nativeListenerCleanupRef.current = null;
+    if (zoomFrameRef.current !== null) window.cancelAnimationFrame(zoomFrameRef.current);
+    zoomFrameRef.current = null;
+    pendingZoomRef.current = null;
     if (nativeCameraRef.current) {
       void nativeCameraRef.current.stop().catch(() => undefined);
       nativeCameraRef.current = null;
@@ -194,7 +245,14 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     const stage = cameraStageRef.current;
     const options = () => {
       const bounds = stage.getBoundingClientRect();
-      return { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height, devicePixelRatio: window.devicePixelRatio || 1 };
+      return {
+        x: bounds.left,
+        y: bounds.top,
+        width: bounds.width,
+        height: bounds.height,
+        devicePixelRatio: window.devicePixelRatio || 1,
+        viewportScale: window.visualViewport?.scale || 1,
+      };
     };
     try {
       const textListener = await PurchaseCamera.addListener("textRecognized", ({ text }) => resolveRecognizedText(text));
@@ -206,7 +264,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         }
         if (typeof diagnostics.minZoom === "number" && typeof diagnostics.maxZoom === "number") {
           setZoomRange({ min: diagnostics.minZoom, max: diagnostics.maxZoom, step: 0.1 });
-          if (typeof diagnostics.zoom === "number") setZoom(diagnostics.zoom);
+          if (typeof diagnostics.zoom === "number") setZoom(roundDisplayedZoom(diagnostics.zoom));
         }
       });
       const focusListener = await PurchaseCamera.addListener("focusStatus", ({ success }) => {
@@ -226,14 +284,21 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       }
       if (typeof diagnostics.minZoom === "number" && typeof diagnostics.maxZoom === "number") {
         setZoomRange({ min: diagnostics.minZoom, max: diagnostics.maxZoom, step: 0.1 });
-        if (typeof diagnostics.zoom === "number") setZoom(diagnostics.zoom);
+        if (typeof diagnostics.zoom === "number") setZoom(roundDisplayedZoom(diagnostics.zoom));
       }
       const updateBounds = () => { void PurchaseCamera.updateBounds(options()).catch(() => undefined); };
       const scrollContainer = stage.closest(".purchase-scanner-backdrop");
       window.addEventListener("resize", updateBounds);
+      window.addEventListener("scroll", updateBounds, { passive: true });
+      window.visualViewport?.addEventListener("resize", updateBounds);
+      window.visualViewport?.addEventListener("scroll", updateBounds);
       scrollContainer?.addEventListener("scroll", updateBounds, { passive: true });
+      window.requestAnimationFrame(updateBounds);
       nativeListenerCleanupRef.current = () => {
         window.removeEventListener("resize", updateBounds);
+        window.removeEventListener("scroll", updateBounds);
+        window.visualViewport?.removeEventListener("resize", updateBounds);
+        window.visualViewport?.removeEventListener("scroll", updateBounds);
         scrollContainer?.removeEventListener("scroll", updateBounds);
         void textListener.remove();
         void diagnosticsListener.remove();
@@ -304,7 +369,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         const capabilities = track?.getCapabilities?.();
         if (capabilities?.zoom) {
           setZoomRange(capabilities.zoom);
-          setZoom(Math.max(capabilities.zoom.min, Math.min(1, capabilities.zoom.max)));
+          setZoom(roundDisplayedZoom(Math.max(capabilities.zoom.min, Math.min(1, capabilities.zoom.max))));
         } else {
           setZoomRange(null);
         }
@@ -388,25 +453,31 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const difference = calculatePriceDifference(sellerPrice, cardmarketPrice);
   const differencePercent = calculatePriceDifferencePercent(sellerPrice, cardmarketPrice);
   const owned = match ? collection.isOwned(match.impressionId) : false;
+  const ownedQuantity = match ? collection.getQuantity(match.impressionId) : 0;
   const tone = getPurchasePriceTone(differencePercent);
   const add = () => {
     if (!match || added) return;
-    purchases.addItem(sessionId, createPurchaseSessionItem(match, owned ? "owned" : "missing", priceMode, sellerPrice));
+    purchases.addItem(sessionId, createPurchaseSessionItem(match, owned ? "owned" : "missing", ownedQuantity, priceMode, sellerPrice));
     setAdded(true);
   };
   const updateZoom = (next: number) => {
     if (!zoomRange) return;
-    const min = zoomRange.min;
-    const max = zoomRange.max;
-    const normalized = Math.max(min, Math.min(next, max));
+    const normalized = roundDisplayedZoom(clampZoom(next, zoomRange));
     setZoom(normalized);
-    if (nativeCameraRef.current) {
-      void nativeCameraRef.current.setZoomRatio({ zoom: normalized }).catch(() => undefined);
-      return;
-    }
-    const track = streamRef.current?.getVideoTracks()[0] as CameraTrack | undefined;
-    if (!track) return;
-    void track.applyConstraints({ advanced: [{ zoom: normalized } as CameraConstraintSet] }).catch(() => undefined);
+    pendingZoomRef.current = normalized;
+    if (zoomFrameRef.current !== null) return;
+    zoomFrameRef.current = window.requestAnimationFrame(() => {
+      zoomFrameRef.current = null;
+      const pending = pendingZoomRef.current;
+      pendingZoomRef.current = null;
+      if (pending === null) return;
+      if (nativeCameraRef.current) {
+        void nativeCameraRef.current.setZoomRatio({ zoom: pending }).catch(() => undefined);
+        return;
+      }
+      const track = streamRef.current?.getVideoTracks()[0] as CameraTrack | undefined;
+      if (track) void track.applyConstraints({ advanced: [{ zoom: pending } as CameraConstraintSet] }).catch(() => undefined);
+    });
   };
   const scanHighDefinitionPhoto = async () => {
     setHighDefinitionCapture(true);
@@ -445,6 +516,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       <button className="collection-scanner-close" type="button" aria-label={en ? "Close purchase mode" : "Fermer le mode achat"} onClick={() => { stopCamera(); onClose(); }}>×</button>
       <p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p>
       <h2 id="purchase-scanner-title">{en ? "Scan one card at a time" : "Scanne une carte à la fois"}</h2>
+      <label className="purchase-card-filter">{en ? "Cards to show" : "Cartes à afficher"}<select value={cardFilter} onChange={(event) => setCardFilter(event.target.value as PurchaseCardFilter)}><option value="missing">{en ? "Missing only" : "Manquantes uniquement"}</option><option value="all">{en ? "All cards" : "Toutes les cartes"}</option></select></label>
       <div ref={cameraStageRef} className={`purchase-camera-stage${cameraBackend === "CameraX" ? " is-native-camera" : ""}`}>
         <video ref={videoRef} autoPlay muted playsInline />
         <div className="purchase-scan-guide" aria-hidden="true"><span>{en ? "CARD" : "CARTE"}</span></div>
@@ -460,20 +532,20 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         <div><dt>{en ? "Zoom" : "Zoom"}</dt><dd>×{cameraDiagnostics.zoom?.toFixed(1) ?? "?"} ({cameraDiagnostics.minZoom?.toFixed(1) ?? "?"}–{cameraDiagnostics.maxZoom?.toFixed(1) ?? "?"})</dd></div>
         <div><dt>{en ? "Manual focus" : "Focus manuel"}</dt><dd>{cameraDiagnostics.focusSuccess === undefined ? "—" : cameraDiagnostics.focusSuccess ? (en ? "success" : "réussi") : (en ? "failed" : "échoué")}</dd></div>
       </dl> : null}
-      {zoomRange ? <label className="purchase-zoom-control">{en ? "Native camera zoom" : "Zoom caméra natif"}<input type="range" min={zoomRange.min} max={zoomRange.max} step={zoomRange.step || 0.1} value={zoom} onChange={(event) => updateZoom(Number(event.target.value))} /><span>×{zoom.toFixed(1)}</span></label> : <p className="purchase-camera-quality">{en ? "This phone does not expose live native zoom. Use the HD photo for the phone camera’s pinch zoom." : "Ce téléphone ne propose pas son zoom natif en direct. Utilise la photo HD pour le zoom pincé de l’appareil photo."}</p>}
+      {zoomRange ? <label className="purchase-zoom-control">{en ? "Native camera zoom" : "Zoom caméra natif"}<input type="range" min="0" max={ZOOM_SLIDER_MAX} step="1" value={zoomToSliderPosition(zoom, zoomRange)} onChange={(event) => updateZoom(sliderPositionToZoom(Number(event.target.value), zoomRange))} /><span>×{zoom.toFixed(1)}</span></label> : <p className="purchase-camera-quality">{en ? "This phone does not expose live native zoom. Use the HD photo for the phone camera’s pinch zoom." : "Ce téléphone ne propose pas son zoom natif en direct. Utilise la photo HD pour le zoom pincé de l’appareil photo."}</p>}
       <button type="button" className="purchase-hd-capture" disabled={highDefinitionCapture} onClick={() => { void scanHighDefinitionPhoto(); }}>{highDefinitionCapture ? (en ? "Opening HD camera…" : "Ouverture de la caméra HD…") : (en ? "Take an HD photo (native zoom)" : "Prendre une photo HD (zoom natif)")}</button>
       <canvas ref={canvasRef} hidden />
       <p className="purchase-privacy">{en ? "Analysis is performed locally. No photo or video is saved." : "Analyse effectuée localement. Aucune photo ni vidéo n’est enregistrée."}</p>
       {match ? <div className="purchase-scan-result">
         <CardPreviewThumb className="purchase-scan-art" imageUrl={match.variant.imageUrl} name={match.row.name} />
         <div className="purchase-scan-result-copy">
-          <p className={`purchase-ownership ${owned ? "is-owned" : "is-missing"}`}>{owned ? (en ? "✓ Owned" : "✓ Possédée") : (en ? "✕ Missing" : "✕ Manquante")}</p>
+          <p className={`purchase-ownership ${owned ? "is-owned" : "is-missing"}`}>{owned ? (en ? `✓ Owned · ×${ownedQuantity}` : `✓ Possédée · ×${ownedQuantity}`) : (en ? "✕ Missing" : "✕ Manquante")}</p>
           <h3>{match.row.name}</h3><p>{match.setName} · #{match.variant.number} · {match.variant.rarity}</p>
           <label>{en ? "Reference price" : "Prix Cardmarket"}<select value={priceMode} onChange={(event) => setPriceMode(event.target.value as PriceMode)}><option value="low">{en ? "Lowest price" : "Prix minimum"}</option><option value="trend">{en ? "Cardmarket trend" : "Tendance Cardmarket"}</option><option value="avg30">{en ? "30-day average" : "Moyenne 30 jours"}</option></select><strong>{cardmarketPrice === null ? (en ? "Unavailable" : "Indisponible") : EURO.format(cardmarketPrice)}</strong></label>
           <small className="purchase-price-date">{priceUpdatedAt ? `${en ? "Last price update: " : "Dernière mise à jour du prix : "}${new Intl.DateTimeFormat(language === "en" ? "en-GB" : "fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(priceUpdatedAt))}` : (en ? "Latest price available in the catalogue" : "Dernier prix disponible dans le catalogue")}</small>
           <label>{en ? "Seller price" : "Prix vendeur"}<input inputMode="decimal" type="text" value={sellerInput} onChange={(event) => setSellerInput(event.target.value)} placeholder="30,00 €" /></label>
           {difference !== null && differencePercent !== null ? <p className={`purchase-difference is-${tone}`}><strong>{difference > 0 ? "+" : ""}{EURO.format(difference)}</strong><span>{differencePercent > 0 ? "+" : ""}{differencePercent.toLocaleString(language === "en" ? "en-GB" : "fr-FR", { maximumFractionDigits: 1 })} %</span></p> : null}
-          <button type="button" disabled={added} onClick={add}>{added ? (en ? "Already in this purchase" : "Déjà dans cet achat") : (en ? "Add to potential purchase" : "Ajouter à l’achat potentiel")}</button>
+          <button type="button" disabled={added} onClick={add}>{added ? (en ? "Already in this purchase" : "Déjà dans cet achat") : owned ? (en ? "Add anyway" : "Ajouter quand même") : (en ? "Add to potential purchase" : "Ajouter à l’achat potentiel")}</button>
         </div>
       </div> : null}
     </section>

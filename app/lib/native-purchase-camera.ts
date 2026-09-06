@@ -22,8 +22,8 @@ export type PurchaseCameraDiagnostics = {
 };
 
 export type NativePurchaseCamera = {
-  start(options: { x: number; y: number; width: number; height: number; devicePixelRatio: number }): Promise<PurchaseCameraDiagnostics>;
-  updateBounds(options: { x: number; y: number; width: number; height: number; devicePixelRatio: number }): Promise<void>;
+  start(options: { x: number; y: number; width: number; height: number; devicePixelRatio: number; viewportScale: number }): Promise<PurchaseCameraDiagnostics>;
+  updateBounds(options: { x: number; y: number; width: number; height: number; devicePixelRatio: number; viewportScale: number }): Promise<void>;
   setZoomRatio(options: { zoom: number }): Promise<{ zoom: number }>;
   focus(options: { x: number; y: number }): Promise<void>;
   stop(): Promise<void>;

@@ -17,6 +17,8 @@ export type PurchaseSessionItem = {
   imageUrl: string | null;
   cardmarketUrl: string | null;
   collectionStatus: "owned" | "missing";
+  /** Quantity at the moment this card was added to the potential purchase. */
+  ownedQuantity?: number;
   cardmarketPrice: number | null;
   priceMode: PriceMode;
   sellerPrice: number | null;
@@ -43,6 +45,8 @@ export type PurchaseTotals = {
   differencePercent: number | null;
   withoutSellerPrice: number;
   withoutCardmarketPrice: number;
+  missingCount: number;
+  ownedCount: number;
 };
 
 export const PURCHASE_PRICE_THRESHOLDS = {
@@ -96,6 +100,8 @@ export function calculateSessionTotals(items: readonly PurchaseSessionItem[]): P
     differencePercent: comparableCardmarket > 0 ? ((comparableSeller - comparableCardmarket) / comparableCardmarket) * 100 : null,
     withoutSellerPrice: items.length - sellerItems.length,
     withoutCardmarketPrice: items.length - cardmarketItems.length,
+    missingCount: items.filter((item) => item.collectionStatus === "missing").length,
+    ownedCount: items.filter((item) => item.collectionStatus === "owned").length,
   };
 }
 
@@ -113,6 +119,7 @@ export function createPurchaseSession(name: string, now = new Date()): PurchaseS
 export function createPurchaseSessionItem(
   impression: CollectionImpression,
   collectionStatus: "owned" | "missing",
+  ownedQuantity: number,
   priceMode: PriceMode,
   sellerPrice: number | null,
   now = new Date(),
@@ -129,6 +136,7 @@ export function createPurchaseSessionItem(
     imageUrl: impression.variant.imageUrl,
     cardmarketUrl: impression.row.cardmarketUrl,
     collectionStatus,
+    ...(collectionStatus === "owned" ? { ownedQuantity: Math.max(1, Math.floor(ownedQuantity)) } : {}),
     cardmarketPrice: getPrimaryVariantPrice(impression.variant, priceMode),
     priceMode,
     sellerPrice,

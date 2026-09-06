@@ -35,4 +35,15 @@ test("summarises only comparable purchase prices for the difference", () => {
   assert.equal(totals.difference, -10);
   assert.equal(totals.differencePercent, -25);
   assert.equal(totals.withoutSellerPrice, 1);
+  assert.equal(totals.missingCount, 0);
+  assert.equal(totals.ownedCount, 0);
+});
+
+test("keeps missing cards and owned duplicates distinct in a session", () => {
+  const totals = calculateSessionTotals([
+    { cardmarketPrice: 4, sellerPrice: 2, collectionStatus: "missing" },
+    { cardmarketPrice: 4, sellerPrice: 1, collectionStatus: "owned", ownedQuantity: 2 },
+  ] as never);
+  assert.equal(totals.missingCount, 1);
+  assert.equal(totals.ownedCount, 1);
 });

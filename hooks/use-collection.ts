@@ -6,6 +6,8 @@ import {
   COLLECTION_CHANGE_EVENT,
   COLLECTION_STORAGE_KEY,
   getCollectionStatus,
+  getCollectionQuantity,
+  incrementCollectionQuantity,
   isCollectionOwned,
   readCollectionState,
   withCollectionFoil,
@@ -67,6 +69,14 @@ export function useCollection() {
     setState(next);
   }, [persist]);
 
+  const addCopy = useCallback((impressionId: string) => {
+    setState((current) => {
+      const next = incrementCollectionQuantity(current, impressionId);
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   const clear = useCallback(() => {
     persist({});
     setState({});
@@ -77,13 +87,15 @@ export function useCollection() {
     state,
     getStatus: (impressionId: string) => getCollectionStatus(state, impressionId),
     isOwned: (impressionId: string) => isCollectionOwned(state, impressionId),
+    getQuantity: (impressionId: string) => getCollectionQuantity(state, impressionId),
     isFoil: (impression: CollectionImpression) => impression.variant.pricing === "dual"
       && isCollectionOwned(state, impression.impressionId)
       && state[impression.impressionId]?.foil === true,
     setOwned: (impressionId: string) => setStatus(impressionId, "owned"),
     setMissing: (impressionId: string) => setStatus(impressionId, "missing"),
     setFoil,
+    addCopy,
     restore,
     clear,
-  }), [clear, ready, restore, setFoil, setStatus, state]);
+  }), [addCopy, clear, ready, restore, setFoil, setStatus, state]);
 }
