@@ -24,7 +24,9 @@ import { usePurchaseSessions } from "@/hooks/use-purchase-sessions";
 const FRAME_INTERVAL_MS = 850;
 const AUTOFOCUS_SETTLE_MS = 850;
 const ANALYSIS_MAX_WIDTH = 1280;
-const CAMERA_DEBUG = typeof window !== "undefined" && window.location.hostname === "localhost";
+// Disabled by default in every release. Developers can opt in on a local URL
+// with ?cameraDebug=1 when inspecting an Android/WebView session remotely.
+const CAMERA_DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("cameraDebug") === "1";
 const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
 
 type ReaderState = "starting" | "scanning" | "error";
