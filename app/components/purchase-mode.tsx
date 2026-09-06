@@ -33,7 +33,6 @@ const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR"
 type ReaderState = "starting" | "scanning" | "error";
 type CachedPriceStatus = { updatedAt?: string };
 type ZoomRange = { min: number; max: number; step: number };
-type PurchaseCardFilter = "missing" | "all";
 type CameraCapabilities = MediaTrackCapabilities & { zoom?: ZoomRange; focusMode?: string[] };
 type CameraSettings = MediaTrackSettings & { focusMode?: string; resizeMode?: string; zoom?: number };
 type CameraTrack = Omit<MediaStreamTrack, "getCapabilities" | "getSettings" | "applyConstraints"> & { getCapabilities?: () => CameraCapabilities; getSettings?: () => CameraSettings; applyConstraints: (constraints: MediaTrackConstraints) => Promise<void> };
@@ -181,16 +180,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [cameraDiagnostics, setCameraDiagnostics] = useState<PurchaseCameraDiagnostics | null>(null);
   const [highDefinitionCapture, setHighDefinitionCapture] = useState(false);
   const [cameraRestart, setCameraRestart] = useState(0);
-  const [cardFilter, setCardFilter] = useState<PurchaseCardFilter>("missing");
-  const cardFilterRef = useRef(cardFilter);
-
-  useEffect(() => {
-    cardFilterRef.current = cardFilter;
-    lastDetectedIdRef.current = null;
-    setResult(null);
-    setSellerInput("");
-  }, [cardFilter]);
-
   const resolveRecognizedText = (detectedText: string, force = false) => {
     const parsed = parseCardScanText(detectedText);
     const resolved = parsed.ok
@@ -198,11 +187,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       : findCardFromDetectedText(detectedText, impressions);
     if (resolved.kind !== "match" || (!force && resolved.impression.impressionId === lastDetectedIdRef.current)) return resolved;
     lastDetectedIdRef.current = resolved.impression.impressionId;
-    if (cardFilterRef.current === "missing" && collection.isOwned(resolved.impression.impressionId)) {
-      setResult(null);
-      setSellerInput("");
-      return resolved;
-    }
     setResult(resolved);
     setSellerInput("");
     setAdded(sessionItems.includes(resolved.impression.impressionId));
@@ -516,7 +500,13 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       <button className="collection-scanner-close" type="button" aria-label={en ? "Close purchase mode" : "Fermer le mode achat"} onClick={() => { stopCamera(); onClose(); }}>×</button>
       <p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p>
       <h2 id="purchase-scanner-title">{en ? "Scan one card at a time" : "Scanne une carte à la fois"}</h2>
-      <label className="purchase-card-filter">{en ? "Cards to show" : "Cartes à afficher"}<select value={cardFilter} onChange={(event) => setCardFilter(event.target.value as PurchaseCardFilter)}><option value="missing">{en ? "Missing only" : "Manquantes uniquement"}</option><option value="all">{en ? "All cards" : "Toutes les cartes"}</option></select></label>
+      {match ? <div className="purchase-quick-add" aria-live="polite">
+        <div>
+          <p className={`purchase-ownership ${owned ? "is-owned" : "is-missing"}`}>{owned ? (en ? `✓ Owned · ×${ownedQuantity}` : `✓ Possédée · ×${ownedQuantity}`) : (en ? "✕ Missing" : "✕ Manquante")}</p>
+          <strong>{match.row.name}</strong>
+        </div>
+        <button type="button" disabled={added} onClick={add}>{added ? (en ? "Added" : "Ajoutée") : (en ? "Quick add" : "Ajout rapide")}</button>
+      </div> : null}
       <div ref={cameraStageRef} className={`purchase-camera-stage${cameraBackend === "CameraX" ? " is-native-camera" : ""}`}>
         <video ref={videoRef} autoPlay muted playsInline />
         <div className="purchase-scan-guide" aria-hidden="true"><span>{en ? "CARD" : "CARTE"}</span></div>
