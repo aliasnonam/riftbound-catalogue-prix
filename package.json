@@ -16,7 +16,7 @@
     "db:migrate:local": "set \"WRANGLER_LOG_PATH=.wrangler\\wrangler.log\" && wrangler d1 migrations apply DB --local --config wrangler.local.jsonc --persist-to .wrangler/state",
     "android:build": "vite build --config mobile/vite.config.ts",
     "test:scan": "node --import tsx --test tests/card-scan.test.ts",
-    "test:mobile": "node --import tsx --test tests/card-scan.test.ts tests/collection-backup.test.ts",
+    "test:mobile": "node --import tsx --test tests/card-scan.test.ts tests/collection-backup.test.ts tests/purchase-sessions.test.ts",
     "android:sync": "npm run android:build && cap sync android",
     "android:open": "cap open android",
     "android:apk": "npm run android:sync && node scripts/android-apk.mjs"

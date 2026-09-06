@@ -170,6 +170,11 @@ function isLocalPriceData(value: unknown): value is LocalPriceData {
 
 function publishPriceSyncStatus(status: PriceSyncStatus) {
   currentPriceSyncStatus = status;
+  try {
+    window.sessionStorage.setItem("riftbound-price-sync-status", JSON.stringify(status));
+  } catch {
+    // The catalogue itself remains available if session storage is unavailable.
+  }
   window.dispatchEvent(
     new CustomEvent<PriceSyncStatus>("riftbound:price-sync-status", { detail: status }),
   );
@@ -280,6 +285,9 @@ window.fetch = async (input, init) => {
 };
 
 function routeFor(pathname: string) {
+  if (pathname === "/outils/achats") {
+    return <CollectionPage view="purchases" isMobileApp />;
+  }
   if (pathname === "/outils") {
     return <CollectionPage view="tools" isMobileApp />;
   }

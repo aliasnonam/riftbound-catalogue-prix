@@ -12,6 +12,8 @@ import { SiteHeader } from "@/app/components/site-header";
 import { CachedCardImage } from "@/app/components/offline-image";
 import { OfflineImageControls } from "@/app/components/offline-image-controls";
 import { CardScanner } from "@/app/components/card-scanner";
+import { PurchaseMode } from "@/app/components/purchase-mode";
+import { PurchaseSessionsPage } from "@/app/components/purchase-sessions-page";
 import { CustomSelect } from "@/app/components/ui/custom-select";
 import type { CatalogPayload, CatalogVariant, VariantKind } from "@/lib/catalog";
 import {
@@ -31,7 +33,7 @@ import { useCollection } from "@/hooks/use-collection";
 import { useSiteLanguage } from "@/app/lib/site-language";
 import { CollectionBackupDownload } from "@/app/lib/native-backup-download";
 
-export type CollectionView = "home" | "missing" | "owned" | "manage" | "recent" | "tools";
+export type CollectionView = "home" | "missing" | "owned" | "manage" | "recent" | "tools" | "purchases";
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
 type DisplayStatus = "owned" | "missing";
 type CollectionExclusion = "signature" | "overnumbered" | "alternate" | "Epic" | "Showcase";
@@ -50,7 +52,7 @@ function labelForVariant(variant: CatalogVariant, language: "fr" | "en" = "fr") 
   return KIND_LABELS[variant.kind];
 }
 function statusLabel(status: DisplayStatus, language: "fr" | "en") { return status === "owned" ? (language === "en" ? "✓ Owned" : "✓ Possédée") : (language === "en" ? "✕ Missing" : "✕ Manquante"); }
-function collectionHref(view: Exclude<CollectionView, "home">, focusSetCode?: SetCode) {
+function collectionHref(view: Exclude<CollectionView, "home" | "tools" | "purchases">, focusSetCode?: SetCode) {
   const set = focusSetCode ? SETS.find((item) => item.code === focusSetCode) : undefined;
   return set ? `/collection/${set.slug}/${view}` : `/collection/${view}`;
 }
@@ -318,7 +320,7 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
   const [pendingJumpIndex, setPendingJumpIndex] = useState<number | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const targetStatus: DisplayStatus | null = view === "manage" ? null : view === "recent" ? "owned" : view;
+  const targetStatus: DisplayStatus | null = view === "recent" ? "owned" : view === "owned" || view === "missing" ? view : null;
   const focusedSet = focusSetCode ? SETS.find((set) => set.code === focusSetCode) : undefined;
   const scoped = useMemo(() => impressions.filter((impression) => !focusSetCode || impression.setCode === focusSetCode), [focusSetCode, impressions]);
   const filtered = useMemo(() => {
@@ -430,6 +432,7 @@ function CollectionTools({ impressions, isMobileApp }: { impressions: Collection
         <h2>{en ? "Scan a card" : "Scanner une carte"}</h2>
         <p>{en ? "The card scanner is available in the Android app, where the camera and on-device recognition are available." : "Le scanner de cartes est disponible dans l’application Android, qui donne accès à la caméra et à la reconnaissance locale."}</p>
       </section>}
+      {isMobileApp ? <><PurchaseMode impressions={impressions} /><section className="purchase-sessions-entry"><div><p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p><h2>{en ? "Potential purchases" : "Achats potentiels"}</h2><p>{en ? "Review seller sessions, compare totals and add the cards you actually bought to your collection." : "Retrouve tes sessions chez les vendeurs, compare les totaux et ajoute à ta collection les cartes réellement achetées."}</p></div><Link href="/outils/achats">{en ? "View purchases" : "Voir les achats"}</Link></section></> : null}
       <CollectionBackupControls impressions={impressions} />
       {isMobileApp ? <OfflineImageControls imageUrls={imageUrls} /> : <section className="collection-tool-unavailable">
         <p className="eyebrow">{en ? "Offline mode" : "Mode hors ligne"}</p>
@@ -475,6 +478,9 @@ export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { vi
   );
   if (!loading && !error && view === "tools") {
     return <div className="site-shell collection-site-shell"><SiteHeader collectionSection="tools" /><CollectionTools impressions={impressions} isMobileApp={isMobileApp} /><footer className="site-footer"><div><strong>{en ? "Riftbound — Catalogue & prices" : "Riftbound — Catalogue & prix"}</strong><p>{en ? "Your collection is stored locally on this device." : "Ta collection est mémorisée localement sur cet appareil."}</p><p>{en ? "This is an independent project and is not affiliated with, sponsored by, or approved by Riot Games, Riftbound or Cardmarket." : "Ce site est un projet indépendant et n’est ni affilié, ni sponsorisé, ni approuvé par Riot Games, Riftbound ou Cardmarket."}</p></div><p>{en ? "Riftbound, League of Legends and Cardmarket belong to their respective owners." : "Riftbound, League of Legends et Cardmarket appartiennent à leurs propriétaires respectifs."}</p></footer></div>;
+  }
+  if (!loading && !error && view === "purchases") {
+    return <div className="site-shell collection-site-shell"><SiteHeader collectionSection="tools" /><PurchaseSessionsPage impressions={impressions} /><footer className="site-footer"><div><strong>{en ? "Riftbound — Catalogue & prices" : "Riftbound — Catalogue & prix"}</strong><p>{en ? "Your collection is stored locally on this device." : "Ta collection est mémorisée localement sur cet appareil."}</p></div></footer></div>;
   }
   return <div className="site-shell collection-site-shell"><SiteHeader />{loading ? <main className="collection-shell"><div className="collection-loading">{en ? "Loading collection…" : "Chargement de la collection…"}</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>{en ? "The collection could not be loaded." : "La collection n’a pas pu être chargée."}</h2><p>{en ? "Try again in a moment." : "Réessaie dans un instant."}</p></div></main> : view === "home" ? <main className="collection-shell">
     <div className="collection-heading"><div><p className="eyebrow">{en ? "Personal collection" : "Collection personnelle"}</p><h1>{en ? "My collection" : "Ma collection"}</h1><p>{en ? "Manage all Riftbound printings, directly on this device." : "Organise toutes tes impressions Riftbound, directement sur cet appareil."}</p></div></div>
