@@ -5,7 +5,7 @@ import { Capacitor } from "@capacitor/core";
 
 import { CardPreviewThumb } from "@/app/components/catalog/CardPreview";
 import { useSiteLanguage } from "@/app/lib/site-language";
-import { findCardFromScan, parseCardScanText, type ResolvedCardScan } from "@/lib/card-scan";
+import { findCardFromDetectedText, findCardFromScan, parseCardScanText, type ResolvedCardScan } from "@/lib/card-scan";
 import type { CollectionImpression } from "@/lib/collection";
 import { getPrimaryVariantPrice, type PriceMode } from "@/lib/pricing";
 import {
@@ -24,6 +24,8 @@ const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR"
 
 type ReaderState = "starting" | "scanning" | "error";
 type CachedPriceStatus = { updatedAt?: string };
+type ZoomRange = { min: number; max: number; step: number };
+type CameraTrack = MediaStreamTrack & { getCapabilities?: () => MediaTrackCapabilities & { zoom?: ZoomRange; focusMode?: string[] }; applyConstraints: (constraints: MediaTrackConstraints) => Promise<void> };
 
 export function PurchaseMode({ impressions }: { impressions: CollectionImpression[] }) {
   const { language } = useSiteLanguage();
@@ -82,6 +84,8 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [sellerInput, setSellerInput] = useState("");
   const [added, setAdded] = useState(false);
   const [priceUpdatedAt, setPriceUpdatedAt] = useState<string | null>(null);
+  const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     const readStatus = () => {
@@ -110,9 +114,26 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         const current = await Camera.checkPermissions();
         const permission = current.camera === "granted" ? current : await Camera.requestPermissions({ permissions: ["camera"] });
         if (permission.camera !== "granted") throw new Error("permission");
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 3840 },
+            height: { ideal: 2160 },
+            aspectRatio: { ideal: 9 / 16 },
+          },
+          audio: false,
+        });
         if (cancelled) { stream.getTracks().forEach((track) => track.stop()); return; }
         streamRef.current = stream;
+        const track = stream.getVideoTracks()[0] as CameraTrack | undefined;
+        const capabilities = track?.getCapabilities?.();
+        if (capabilities?.zoom) {
+          setZoomRange(capabilities.zoom);
+          setZoom(Math.max(capabilities.zoom.min, Math.min(1, capabilities.zoom.max)));
+        }
+        // These are best-effort settings: Android applies them only when the
+        // camera exposes the capability, without degrading compatible devices.
+        void track?.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] }).catch(() => undefined);
         if (!videoRef.current) return;
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -127,21 +148,28 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
             const width = video.videoWidth;
             const height = video.videoHeight;
             if (!width || !height) return;
-            // Crop the central guide area: V1 deliberately recognises one card only.
-            const sourceWidth = Math.round(width * 0.76);
-            const sourceHeight = Math.round(height * 0.8);
+            // The OCR crop has the physical 63:88 card ratio and includes the
+            // entire bottom line instead of using the wide camera frame.
+            const cardRatio = 63 / 88;
+            let sourceHeight = Math.round(height * 0.86);
+            let sourceWidth = Math.round(sourceHeight * cardRatio);
+            if (sourceWidth > width * 0.86) {
+              sourceWidth = Math.round(width * 0.86);
+              sourceHeight = Math.round(sourceWidth / cardRatio);
+            }
             const sourceX = Math.round((width - sourceWidth) / 2);
             const sourceY = Math.round((height - sourceHeight) / 2);
-            canvas.width = 1280;
-            canvas.height = Math.round((sourceHeight / sourceWidth) * 1280);
+            canvas.width = Math.min(1600, sourceWidth);
+            canvas.height = Math.round(canvas.width / cardRatio);
             canvas.getContext("2d")?.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
             const base64Image = canvas.toDataURL("image/jpeg", 0.84).split(",")[1];
             if (!base64Image) return;
             const { CapacitorPluginMlKitTextRecognition } = await import("@pantrist/capacitor-plugin-ml-kit-text-recognition");
             const recognized = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image });
             const parsed = parseCardScanText(recognized.text);
-            if (!parsed.ok) return;
-            const resolved = findCardFromScan(parsed.value, impressions, recognized.text);
+            const resolved = parsed.ok
+              ? findCardFromScan(parsed.value, impressions, recognized.text)
+              : findCardFromDetectedText(recognized.text, impressions);
             if (resolved.kind !== "match" || resolved.impression.impressionId === lastDetectedIdRef.current) return;
             lastDetectedIdRef.current = resolved.impression.impressionId;
             setResult(resolved);
@@ -180,6 +208,11 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     purchases.addItem(sessionId, createPurchaseSessionItem(match, owned ? "owned" : "missing", priceMode, sellerPrice));
     setAdded(true);
   };
+  const updateZoom = (next: number) => {
+    const track = streamRef.current?.getVideoTracks()[0] as CameraTrack | undefined;
+    setZoom(next);
+    void track?.applyConstraints({ advanced: [{ zoom: next } as MediaTrackConstraintSet] }).catch(() => undefined);
+  };
 
   return <div className="purchase-scanner-backdrop" role="presentation">
     <section className="purchase-scanner-dialog" role="dialog" aria-modal="true" aria-labelledby="purchase-scanner-title">
@@ -191,6 +224,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         <div className="purchase-scan-guide" aria-hidden="true"><span>{en ? "CARD" : "CARTE"}</span></div>
         <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (en ? "Move to the next card when it is detected." : "Passe à la carte suivante une fois détectée.")}</p>
       </div>
+      {zoomRange ? <label className="purchase-zoom-control">{en ? "Camera zoom" : "Zoom caméra"}<input type="range" min={zoomRange.min} max={zoomRange.max} step={zoomRange.step || 0.1} value={zoom} onChange={(event) => updateZoom(Number(event.target.value))} /><span>×{zoom.toFixed(1)}</span></label> : null}
       <canvas ref={canvasRef} hidden />
       <p className="purchase-privacy">{en ? "Analysis is performed locally. No photo or video is saved." : "Analyse effectuée localement. Aucune photo ni vidéo n’est enregistrée."}</p>
       {match ? <div className="purchase-scan-result">

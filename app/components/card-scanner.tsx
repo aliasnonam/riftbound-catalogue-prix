@@ -5,7 +5,7 @@ import { Capacitor } from "@capacitor/core";
 
 import { CardPreviewThumb } from "@/app/components/catalog/CardPreview";
 import { useSiteLanguage } from "@/app/lib/site-language";
-import { findCardFromScan, parseCardScanText, type ResolvedCardScan } from "@/lib/card-scan";
+import { findCardFromDetectedText, findCardFromScan, parseCardScanText, type ResolvedCardScan } from "@/lib/card-scan";
 import type { CollectionImpression } from "@/lib/collection";
 import { getPrimaryVariantPrice } from "@/lib/pricing";
 import { useCollection } from "@/hooks/use-collection";
@@ -68,10 +68,13 @@ export function CardScanner({ impressions }: { impressions: CollectionImpression
       if (!photo.base64String) throw new Error("image unavailable");
       const recognized = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image: photo.base64String });
       const parsed = parseCardScanText(recognized.text);
-      if (!parsed.ok) {
+      const resolved = parsed.ok
+        ? findCardFromScan(parsed.value, impressions, recognized.text)
+        : findCardFromDetectedText(recognized.text, impressions);
+      if (resolved.kind !== "match") {
         setState({
           step: "error",
-          message: parsed.reason === "ambiguous"
+          message: (parsed.ok ? resolved.kind === "ambiguous" : parsed.reason === "ambiguous")
             ? (en
               ? "Several collector codes were detected. Take another picture with the entire card in frame."
               : "Plusieurs codes ont été détectés. Reprends la photo en cadrant la carte entière.")
@@ -81,7 +84,7 @@ export function CardScanner({ impressions }: { impressions: CollectionImpression
         });
         return;
       }
-      setState({ step: "result", result: findCardFromScan(parsed.value, impressions, recognized.text) });
+      setState({ step: "result", result: resolved });
     } catch (error) {
       const message = error instanceof Error && /cancel/i.test(error.message)
         ? (en ? "Scan cancelled." : "Scan annulé.")

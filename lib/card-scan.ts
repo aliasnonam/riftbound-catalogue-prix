@@ -20,6 +20,16 @@ export type ResolvedCardScan =
   | { kind: "ambiguous"; candidates: CollectionImpression[] }
   | { kind: "not-found" };
 
+function normalizeDetectedName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr-FR")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeOcrText(value: string) {
   return value
     .toUpperCase()
@@ -91,4 +101,30 @@ export function findCardFromScan(scan: ParsedCardScan, impressions: CollectionIm
     return { kind: "ambiguous", candidates: unique };
   }
   return { kind: "match", impression: unique[0], confidence: scan.confidence === "exact" && exact.length === 1 ? "high" : "medium" };
+}
+
+/**
+ * Fallback for cards whose collector line is too small or reflective for OCR.
+ * It only accepts a complete, unambiguous name already present in the local
+ * catalogue; it never sends text or an image to a remote recognition service.
+ */
+export function findCardFromDetectedText(detectedText: string, impressions: CollectionImpression[]): ResolvedCardScan {
+  const text = normalizeDetectedName(detectedText);
+  if (!text) return { kind: "not-found" };
+  const matches = impressions.filter((impression) => {
+    const name = normalizeDetectedName(impression.row.name);
+    return name.length >= 4 && (text.includes(name) || name.includes(text));
+  });
+  const byCard = new Map<string, CollectionImpression[]>();
+  for (const impression of matches) {
+    const current = byCard.get(impression.row.id) ?? [];
+    current.push(impression);
+    byCard.set(impression.row.id, current);
+  }
+  if (byCard.size === 0) return { kind: "not-found" };
+  if (byCard.size > 1) return { kind: "ambiguous", candidates: [...byCard.values()].flat() };
+  const candidates = [...byCard.values()][0];
+  // Names identify the card but not necessarily a premium printing. The base
+  // printing is the safe V1 choice; a collector number remains authoritative.
+  return { kind: "match", impression: candidates.find((candidate) => candidate.variant.kind === "base") ?? candidates[0], confidence: "medium" };
 }

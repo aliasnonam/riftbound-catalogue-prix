@@ -42,8 +42,10 @@ export function SiteHeader({ activeSetCode, showLanguageSwitcher = true, collect
     <div className="set-nav-wrap">
       <nav className="set-nav" ref={navRef} aria-label={language === "en" ? "Main navigation" : "Navigation principale"}>
         {SETS.map((item) => <Link href={getSetHref(item.code)} key={item.code} aria-current={item.code === activeSetCode ? "page" : undefined}><span>{String(item.number).padStart(2, "0")}</span>{getSetDisplayName(item, language)}</Link>)}
-        <span className="set-nav-separator" aria-hidden="true" />
-        <Link className="collection-nav-link" href="/collection" aria-current={currentCollectionSection === "collection" ? "page" : undefined}><span aria-hidden="true">◇</span>{language === "en" ? "My collection" : "Ma collection"}</Link>
+        {!currentCollectionSection ? <>
+          <span className="set-nav-separator" aria-hidden="true" />
+          <Link className="collection-nav-link" href="/collection"><span aria-hidden="true">◇</span>{language === "en" ? "My collection" : "Ma collection"}</Link>
+        </> : null}
       </nav>
       <button className={`set-nav-scroll-hint is-left${hints.left ? " is-visible" : ""}`} type="button" aria-label={language === "en" ? "Show previous navigation items" : "Afficher les éléments précédents"} onClick={() => scrollNavigation(-1)}>‹</button>
       <button className={`set-nav-scroll-hint is-right${hints.right ? " is-visible" : ""}`} type="button" aria-label={language === "en" ? "Show next navigation items" : "Afficher les éléments suivants"} onClick={() => scrollNavigation(1)}>›</button>
