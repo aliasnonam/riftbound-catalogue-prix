@@ -31,7 +31,7 @@ import { useCollection } from "@/hooks/use-collection";
 import { useSiteLanguage } from "@/app/lib/site-language";
 import { CollectionBackupDownload } from "@/app/lib/native-backup-download";
 
-export type CollectionView = "home" | "missing" | "owned" | "manage" | "recent";
+export type CollectionView = "home" | "missing" | "owned" | "manage" | "recent" | "tools";
 type SortMode = "number" | "name" | "price-desc" | "price-asc";
 type DisplayStatus = "owned" | "missing";
 type CollectionExclusion = "signature" | "overnumbered" | "alternate" | "Epic" | "Showcase";
@@ -411,6 +411,35 @@ function CollectionList({ view, impressions, focusSetCode }: { view: Exclude<Col
   </main>;
 }
 
+function CollectionTools({ impressions, isMobileApp }: { impressions: CollectionImpression[]; isMobileApp: boolean }) {
+  const { language } = useSiteLanguage();
+  const en = language === "en";
+  const imageUrls = impressions.map((impression) => impression.variant.imageUrl);
+
+  return <main className="collection-shell collection-tools-shell">
+    <div className="collection-heading">
+      <div>
+        <p className="eyebrow">{en ? "Collection tools" : "Outils de collection"}</p>
+        <h1>{en ? "Tools" : "Outils"}</h1>
+        <p>{en ? "Practical functions to manage, back up and use your collection on this device." : "Les fonctions pratiques pour gérer, sauvegarder et utiliser ta collection sur cet appareil."}</p>
+      </div>
+    </div>
+    <div className="collection-tools-stack">
+      {isMobileApp ? <CardScanner impressions={impressions} /> : <section className="collection-tool-unavailable">
+        <p className="eyebrow">{en ? "Quick collection" : "Collection rapide"}</p>
+        <h2>{en ? "Scan a card" : "Scanner une carte"}</h2>
+        <p>{en ? "The card scanner is available in the Android app, where the camera and on-device recognition are available." : "Le scanner de cartes est disponible dans l’application Android, qui donne accès à la caméra et à la reconnaissance locale."}</p>
+      </section>}
+      <CollectionBackupControls impressions={impressions} />
+      {isMobileApp ? <OfflineImageControls imageUrls={imageUrls} /> : <section className="collection-tool-unavailable">
+        <p className="eyebrow">{en ? "Offline mode" : "Mode hors ligne"}</p>
+        <h2>{en ? "Card images" : "Images des cartes"}</h2>
+        <p>{en ? "Image downloads and their cache are managed from the Android app, so your catalogue remains available without a connection." : "Le téléchargement des images et leur cache se gèrent depuis l’application Android, pour garder le catalogue disponible sans connexion."}</p>
+      </section>}
+    </div>
+  </main>;
+}
+
 export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { view: CollectionView; focusSetCode?: SetCode; isMobileApp?: boolean }) {
   const { language } = useSiteLanguage();
   const en = language === "en";
@@ -444,6 +473,9 @@ export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { vi
     () => Object.values(collection.state).filter((entry) => entry.status === "owned").length,
     [collection.state],
   );
+  if (!loading && !error && view === "tools") {
+    return <div className="site-shell collection-site-shell"><SiteHeader collectionSection="tools" /><CollectionTools impressions={impressions} isMobileApp={isMobileApp} /><footer className="site-footer"><div><strong>{en ? "Riftbound — Catalogue & prices" : "Riftbound — Catalogue & prix"}</strong><p>{en ? "Your collection is stored locally on this device." : "Ta collection est mémorisée localement sur cet appareil."}</p><p>{en ? "This is an independent project and is not affiliated with, sponsored by, or approved by Riot Games, Riftbound or Cardmarket." : "Ce site est un projet indépendant et n’est ni affilié, ni sponsorisé, ni approuvé par Riot Games, Riftbound ou Cardmarket."}</p></div><p>{en ? "Riftbound, League of Legends and Cardmarket belong to their respective owners." : "Riftbound, League of Legends et Cardmarket appartiennent à leurs propriétaires respectifs."}</p></footer></div>;
+  }
   return <div className="site-shell collection-site-shell"><SiteHeader />{loading ? <main className="collection-shell"><div className="collection-loading">{en ? "Loading collection…" : "Chargement de la collection…"}</div></main> : error ? <main className="collection-shell"><div className="collection-empty"><h2>{en ? "The collection could not be loaded." : "La collection n’a pas pu être chargée."}</h2><p>{en ? "Try again in a moment." : "Réessaie dans un instant."}</p></div></main> : view === "home" ? <main className="collection-shell">
     <div className="collection-heading"><div><p className="eyebrow">{en ? "Personal collection" : "Collection personnelle"}</p><h1>{en ? "My collection" : "Ma collection"}</h1><p>{en ? "Manage all Riftbound printings, directly on this device." : "Organise toutes tes impressions Riftbound, directement sur cet appareil."}</p></div></div>
     <section className="collection-dashboard" aria-label={en ? "My collection summary" : "Résumé de ma collection"}>
@@ -455,10 +487,8 @@ export function CollectionPage({ view, focusSetCode, isMobileApp = false }: { vi
       <div className="collection-dashboard-kpi is-value is-absolute-cost"><span>{en ? "Remaining for master set" : "Restant pour le Master set"}</span><strong>{formatPrice(financials.masterMissingCost.total)}</strong><p>{en ? "All unowned printings" : "Toutes les impressions non possédées"}{financials.masterMissingCost.withoutPrice ? ` · ${financials.masterMissingCost.withoutPrice} ${en ? "without price" : "sans prix"}` : ""}</p></div>
       <CustomSelect className="collection-dashboard-select" label={en ? "Displayed value" : "Valeur utilisée"} value={dashboardPriceMode} onChange={(value) => setDashboardPriceMode(value as PriceMode)} options={[{ value: "low", label: en ? "Lowest price" : "Prix minimum" }, { value: "trend", label: en ? "Cardmarket trend" : "Tendance Cardmarket" }, { value: "avg30", label: en ? "30-day average" : "Moyenne 30 jours" }]} />
     </section>
-    <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>{en ? "To complete" : "À compléter"}</small><h2>{en ? "Missing cards" : "Cartes manquantes"}</h2><p>{en ? "Prepare your shopping list and compare prices at a glance." : "Prépare ta liste d’achat et compare les prix en un coup d’œil."}</p></div><strong>{missing}</strong><em>{en ? "View list →" : "Voir la liste →"}</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>{en ? "Already in binder" : "Déjà dans le classeur"}</small><h2>{en ? "Owned cards" : "Cartes possédées"}</h2><p>{en ? "Find your saved printings and progress per set." : "Retrouve tes impressions classées et ta progression par set."}</p></div><strong>{owned}</strong><em>{en ? "View list →" : "Voir la liste →"}</em></Link><Link href="/collection/recent" className="collection-overview-card manage"><span>↺</span><div><small>{en ? "Collection history" : "Historique de collection"}</small><h2>{en ? "Recent additions" : "Ajouts récents"}</h2><p>{en ? "View your last 100 added cards, newest first." : "Vois tes 100 dernières cartes ajoutées, de la plus récente à la plus ancienne."}</p></div><strong>{Math.min(100, recentAdditions)}</strong><em>{en ? "View additions →" : "Voir les ajouts →"}</em></Link><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>{en ? "Organisation" : "Organisation"}</small><h2>{en ? "Manage my cards" : "Gérer mes cartes"}</h2><p>{en ? "Mark each printing as owned or missing." : "Classe chaque impression comme possédée ou manquante."}</p></div><strong>{masterSet.total}</strong><em>{en ? "Manage collection →" : "Gérer la collection →"}</em></Link></section>
-    {isMobileApp ? <CardScanner impressions={impressions} /> : null}
-    <CollectionBackupControls impressions={impressions} />
+    <section className="collection-overview-cards"><Link href="/collection/missing" className="collection-overview-card missing"><span>◇</span><div><small>{en ? "To complete" : "À compléter"}</small><h2>{en ? "Missing cards" : "Cartes manquantes"}</h2><p>{en ? "Prepare your shopping list and compare prices at a glance." : "Prépare ta liste d’achat et compare les prix en un coup d’œil."}</p></div><strong>{missing}</strong><em>{en ? "View list →" : "Voir la liste →"}</em></Link><Link href="/collection/owned" className="collection-overview-card owned"><span>✦</span><div><small>{en ? "Already in binder" : "Déjà dans le classeur"}</small><h2>{en ? "Owned cards" : "Cartes possédées"}</h2><p>{en ? "Find your saved printings and progress per set." : "Retrouve tes impressions classées et ta progression par set."}</p></div><strong>{owned}</strong><em>{en ? "View list →" : "Voir la liste →"}</em></Link><Link href="/collection/recent" className="collection-overview-card manage"><span>↺</span><div><small>{en ? "Collection history" : "Historique de collection"}</small><h2>{en ? "Recent additions" : "Ajouts récents"}</h2><p>{en ? "View your last 100 added cards, newest first." : "Vois tes 100 dernières cartes ajoutées, de la plus récente à la plus ancienne."}</p></div><strong>{Math.min(100, recentAdditions)}</strong><em>{en ? "View additions →" : "Voir les ajouts →"}</em></Link></section>
     <section className="collection-breakdown"><div><p className="eyebrow">{en ? "Progress by set" : "Progression par set"}</p><h2>{en ? "The first four sets" : "Les quatre premiers sets"}</h2></div><div className="collection-breakdown-grid">{stats.map(({ set, numberedSet: setNumbered, masterSet: setMaster, missing: setMissing, financials: setFinancials }) => <Link href={`/collection/${set.slug}/missing`} key={set.code} className="collection-set-progress" style={{ "--local-accent": set.accent } as CSSProperties}><span>{getSetDisplayName(set, language)}</span><div className="collection-set-metrics"><p>{en ? "Numbered set" : "Set numéroté"} <strong>{setNumbered.owned} / {setNumbered.total}</strong> · {formatPercent(setNumbered.percentage)}</p><p>Master set <strong>{setMaster.owned} / {setMaster.total}</strong> · {formatPercent(setMaster.percentage)}</p></div><p>{setMissing} {en ? "missing" : `manquante${setMissing > 1 ? "s" : ""}`}</p><div className="collection-set-financial"><small>{en ? "Owned value" : "Valeur possédée"} <b>{formatPrice(setFinancials.ownedValue.total)}</b></small><p className="collection-set-financial-label">{en ? "Still to acquire" : "Reste à acquérir"}</p><small className="is-primary">{en ? "Numbered set" : "Set numéroté"} <b>{formatPrice(setFinancials.numberedMissingCost.total)}</b></small><small>{en ? "Master excluding signed" : "Master hors Signées"} <b>{formatPrice(setFinancials.unsignedMasterMissingCost.total)}</b></small><small className="is-absolute">Master set <b>{formatPrice(setFinancials.masterMissingCost.total)}</b></small></div><i><b style={{ width: `${setMaster.percentage}%` }} /></i></Link>)}</div></section>
-    {isMobileApp ? <OfflineImageControls imageUrls={impressions.map((impression) => impression.variant.imageUrl)} /> : null}
+    <section className="collection-overview-cards collection-overview-manage"><Link href="/collection/manage" className="collection-overview-card manage"><span>☷</span><div><small>{en ? "Organisation" : "Organisation"}</small><h2>{en ? "Manage my cards" : "Gérer mes cartes"}</h2><p>{en ? "Mark each printing as owned or missing." : "Classe chaque impression comme possédée ou manquante."}</p></div><strong>{masterSet.total}</strong><em>{en ? "Manage collection →" : "Gérer la collection →"}</em></Link></section>
   </main> : <CollectionList view={view} impressions={impressions} focusSetCode={focusSetCode} />}<footer className="site-footer"><div><strong>{en ? "Riftbound — Catalogue & prices" : "Riftbound — Catalogue & prix"}</strong><p>{en ? "Your collection is stored locally on this device." : "Ta collection est mémorisée localement sur cet appareil."}</p><p>{en ? "This is an independent project and is not affiliated with, sponsored by, or approved by Riot Games, Riftbound or Cardmarket." : "Ce site est un projet indépendant et n’est ni affilié, ni sponsorisé, ni approuvé par Riot Games, Riftbound ou Cardmarket."}</p></div><p>{en ? "Riftbound, League of Legends and Cardmarket belong to their respective owners." : "Riftbound, League of Legends et Cardmarket appartiennent à leurs propriétaires respectifs."}</p></footer></div>;
 }

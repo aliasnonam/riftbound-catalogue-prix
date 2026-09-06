@@ -280,6 +280,9 @@ window.fetch = async (input, init) => {
 };
 
 function routeFor(pathname: string) {
+  if (pathname === "/outils") {
+    return <CollectionPage view="tools" isMobileApp />;
+  }
   if (pathname.startsWith("/collection")) {
     const parts = pathname.split("/").filter(Boolean);
     const view = (["owned", "missing", "manage", "recent"].includes(parts.at(-1) ?? "") ? parts.at(-1) : "home") as CollectionView;

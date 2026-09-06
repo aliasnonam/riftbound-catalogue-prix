@@ -6,10 +6,20 @@ import { useEffect, useRef, useState } from "react";
 import { getSetDisplayName, getSetHref, SETS, type SetCode } from "@/lib/sets";
 import { useSiteLanguage } from "@/app/lib/site-language";
 
-export function SiteHeader({ activeSetCode, showLanguageSwitcher = true }: { activeSetCode?: SetCode; showLanguageSwitcher?: boolean }) {
+type CollectionSection = "collection" | "tools";
+
+export function SiteHeader({ activeSetCode, showLanguageSwitcher = true, collectionSection }: { activeSetCode?: SetCode; showLanguageSwitcher?: boolean; collectionSection?: CollectionSection }) {
   const navRef = useRef<HTMLElement | null>(null);
   const [hints, setHints] = useState({ left: false, right: false });
   const { language, setLanguage } = useSiteLanguage();
+  const inferredCollectionSection: CollectionSection | undefined = typeof window === "undefined"
+    ? undefined
+    : window.location.pathname.startsWith("/outils")
+      ? "tools"
+      : window.location.pathname.startsWith("/collection")
+        ? "collection"
+        : undefined;
+  const currentCollectionSection = collectionSection ?? inferredCollectionSection;
   useEffect(() => {
     const nav = navRef.current;
     if (!nav) return;
@@ -33,11 +43,17 @@ export function SiteHeader({ activeSetCode, showLanguageSwitcher = true }: { act
       <nav className="set-nav" ref={navRef} aria-label={language === "en" ? "Main navigation" : "Navigation principale"}>
         {SETS.map((item) => <Link href={getSetHref(item.code)} key={item.code} aria-current={item.code === activeSetCode ? "page" : undefined}><span>{String(item.number).padStart(2, "0")}</span>{getSetDisplayName(item, language)}</Link>)}
         <span className="set-nav-separator" aria-hidden="true" />
-        <Link className="collection-nav-link" href="/collection" aria-current={!activeSetCode ? "page" : undefined}><span aria-hidden="true">◇</span>{language === "en" ? "My collection" : "Ma collection"}</Link>
+        <Link className="collection-nav-link" href="/collection" aria-current={currentCollectionSection === "collection" ? "page" : undefined}><span aria-hidden="true">◇</span>{language === "en" ? "My collection" : "Ma collection"}</Link>
       </nav>
       <button className={`set-nav-scroll-hint is-left${hints.left ? " is-visible" : ""}`} type="button" aria-label={language === "en" ? "Show previous navigation items" : "Afficher les éléments précédents"} onClick={() => scrollNavigation(-1)}>‹</button>
       <button className={`set-nav-scroll-hint is-right${hints.right ? " is-visible" : ""}`} type="button" aria-label={language === "en" ? "Show next navigation items" : "Afficher les éléments suivants"} onClick={() => scrollNavigation(1)}>›</button>
     </div>
-    {showLanguageSwitcher ? <div className="language-switcher" aria-label={language === "en" ? "Site language" : "Langue du site"}><button type="button" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>EN</button><button type="button" aria-pressed={language === "fr"} onClick={() => setLanguage("fr")}>FR</button></div> : null}
+    <div className="topbar-actions">
+      {currentCollectionSection ? <nav className="collection-tools-nav" aria-label={language === "en" ? "Collection navigation" : "Navigation de collection"}>
+        <Link href="/collection" aria-current={currentCollectionSection === "collection" ? "page" : undefined}><span aria-hidden="true">◇</span>{language === "en" ? "My collection" : "Ma collection"}</Link>
+        <Link href="/outils" aria-current={currentCollectionSection === "tools" ? "page" : undefined}><span aria-hidden="true">◇</span>{language === "en" ? "Tools" : "Outils"}</Link>
+      </nav> : null}
+      {showLanguageSwitcher ? <div className="language-switcher" aria-label={language === "en" ? "Site language" : "Langue du site"}><button type="button" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>EN</button><button type="button" aria-pressed={language === "fr"} onClick={() => setLanguage("fr")}>FR</button></div> : null}
+    </div>
   </header>;
 }
