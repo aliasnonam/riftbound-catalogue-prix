@@ -46,7 +46,7 @@ export function PurchaseMode({ impressions }: { impressions: CollectionImpressio
     setActiveSessionId(session.id);
   };
 
-  return <section className="purchase-mode-entry" aria-labelledby="purchase-mode-title">
+  return <section className="purchase-mode-entry collection-tools-action-card" aria-labelledby="purchase-mode-title">
     <div>
       <p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p>
       <h2 id="purchase-mode-title">{en ? "Scan at a seller" : "Scanner chez un vendeur"}</h2>
