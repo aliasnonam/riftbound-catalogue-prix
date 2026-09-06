@@ -2374,7 +2374,8 @@ a { color: inherit; text-decoration: none; }
 
 /* The live preview is a physical 63 × 88 mm trading-card window. */
 .purchase-camera-stage { min-height: 0; aspect-ratio: 63 / 88; }
-.purchase-camera-stage video { width: 100%; height: 100%; min-height: 0; object-fit: cover; transform-origin: center; transition: transform 140ms ease-out; }
+.purchase-camera-stage video { width: 100%; height: 100%; min-height: 0; object-fit: cover; }
 .purchase-scan-guide { inset: 5.5%; width: auto; height: auto; max-width: none; aspect-ratio: auto; transform: none; }
 .purchase-hd-capture { width: 100%; min-height: 42px; margin-top: 12px; padding: 0 15px; border: 1px solid color-mix(in srgb, var(--set-accent) 55%, var(--line)); border-radius: 999px; background: rgba(255,255,255,.035); color: var(--muted-strong); font-size: 10px; font-weight: 800; }
 .purchase-hd-capture:disabled { cursor: wait; opacity: .62; }
+.purchase-camera-quality { margin: 10px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }

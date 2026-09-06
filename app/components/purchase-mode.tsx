@@ -20,13 +20,12 @@ import { useCollection } from "@/hooks/use-collection";
 import { usePurchaseSessions } from "@/hooks/use-purchase-sessions";
 
 const FRAME_INTERVAL_MS = 650;
-const SOFTWARE_ZOOM_MAX = 3.5;
 const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
 
 type ReaderState = "starting" | "scanning" | "error";
 type CachedPriceStatus = { updatedAt?: string };
 type ZoomRange = { min: number; max: number; step: number };
-type CameraTrack = MediaStreamTrack & { getCapabilities?: () => MediaTrackCapabilities & { zoom?: ZoomRange; focusMode?: string[] }; applyConstraints: (constraints: MediaTrackConstraints) => Promise<void> };
+type CameraTrack = MediaStreamTrack & { getCapabilities?: () => MediaTrackCapabilities & { zoom?: ZoomRange; focusMode?: string[] }; getSettings?: () => MediaTrackSettings; applyConstraints: (constraints: MediaTrackConstraints) => Promise<void> };
 
 export function PurchaseMode({ impressions }: { impressions: CollectionImpression[] }) {
   const { language } = useSiteLanguage();
@@ -87,11 +86,9 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [priceUpdatedAt, setPriceUpdatedAt] = useState<string | null>(null);
   const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [hardwareZoomActive, setHardwareZoomActive] = useState(false);
+  const [previewResolution, setPreviewResolution] = useState<string | null>(null);
   const [highDefinitionCapture, setHighDefinitionCapture] = useState(false);
   const [cameraRestart, setCameraRestart] = useState(0);
-  const zoomRef = useRef(1);
-  const hardwareZoomActiveRef = useRef(false);
 
   const resolveRecognizedText = (detectedText: string, force = false) => {
     const parsed = parseCardScanText(detectedText);
@@ -134,18 +131,34 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         const current = await Camera.checkPermissions();
         const permission = current.camera === "granted" ? current : await Camera.requestPermissions({ permissions: ["camera"] });
         if (permission.camera !== "granted") throw new Error("permission");
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            // Ask Android for a portrait, high-detail feed. The previous
-            // landscape request was then stretched into a tall card frame.
-            width: { ideal: 2160 },
-            height: { ideal: 3840 },
-            aspectRatio: { ideal: 9 / 16 },
-            frameRate: { ideal: 30, max: 30 },
-          },
-          audio: false,
-        });
+        // Do not force the camera into a portrait aspect ratio. Android then
+        // commonly falls back to a small WebView stream before CSS enlarges it.
+        // First request a native 4K/FHD back-camera feed without resampling;
+        // only fall back to 1080p when the sensor cannot provide it.
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { min: 1920, ideal: 3840 },
+              height: { min: 1080, ideal: 2160 },
+              frameRate: { ideal: 30, max: 30 },
+              resizeMode: "none",
+            },
+            audio: false,
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { min: 1280, ideal: 1920 },
+              height: { min: 720, ideal: 1080 },
+              frameRate: { ideal: 30, max: 30 },
+              resizeMode: "none",
+            },
+            audio: false,
+          });
+        }
         if (cancelled) { stream.getTracks().forEach((track) => track.stop()); return; }
         streamRef.current = stream;
         const track = stream.getVideoTracks()[0] as CameraTrack | undefined;
@@ -153,12 +166,11 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         if (capabilities?.zoom) {
           setZoomRange(capabilities.zoom);
           setZoom(Math.max(capabilities.zoom.min, Math.min(1, capabilities.zoom.max)));
-          zoomRef.current = Math.max(capabilities.zoom.min, Math.min(1, capabilities.zoom.max));
         } else {
           setZoomRange(null);
-          setHardwareZoomActive(false);
-          hardwareZoomActiveRef.current = false;
         }
+        const settings = track?.getSettings?.();
+        setPreviewResolution(settings?.width && settings.height ? `${settings.width} × ${settings.height}` : null);
         // These are best-effort settings: Android applies them only when the
         // camera exposes the capability, without degrading compatible devices.
         void track?.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] }).catch(() => undefined);
@@ -176,23 +188,25 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
             const width = video.videoWidth;
             const height = video.videoHeight;
             if (!width || !height) return;
-            // The OCR crop follows the physical 63:88 mm card ratio. When a
-            // phone does not expose hardware zoom, the same slider performs a
-            // software crop for both the preview and the OCR input.
+            // The canvas is OCR-only; it does not paint the preview. Keeping
+            // it independent avoids lowering the user's live video quality.
             const cardRatio = 63 / 88;
-            const visualZoom = hardwareZoomActiveRef.current ? 1 : zoomRef.current;
-            let sourceHeight = Math.round((height * 0.92) / visualZoom);
+            let sourceHeight = Math.round(height * 0.92);
             let sourceWidth = Math.round(sourceHeight * cardRatio);
-            if (sourceWidth > (width * 0.92) / visualZoom) {
-              sourceWidth = Math.round((width * 0.92) / visualZoom);
+            if (sourceWidth > width * 0.92) {
+              sourceWidth = Math.round(width * 0.92);
               sourceHeight = Math.round(sourceWidth / cardRatio);
             }
             const sourceX = Math.round((width - sourceWidth) / 2);
             const sourceY = Math.round((height - sourceHeight) / 2);
-            canvas.width = Math.min(1600, sourceWidth);
+            canvas.width = Math.min(2048, sourceWidth);
             canvas.height = Math.round(canvas.width / cardRatio);
-            canvas.getContext("2d")?.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
-            const base64Image = canvas.toDataURL("image/jpeg", 0.84).split(",")[1];
+            const context = canvas.getContext("2d");
+            if (!context) return;
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = "high";
+            context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+            const base64Image = canvas.toDataURL("image/jpeg", 0.94).split(",")[1];
             if (!base64Image) return;
             const { CapacitorPluginMlKitTextRecognition } = await import("@pantrist/capacitor-plugin-ml-kit-text-recognition");
             const recognized = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image });
@@ -232,19 +246,12 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   };
   const updateZoom = (next: number) => {
     const track = streamRef.current?.getVideoTracks()[0] as CameraTrack | undefined;
-    const min = zoomRange?.min ?? 1;
-    const max = zoomRange?.max ?? SOFTWARE_ZOOM_MAX;
-    const normalized = Math.max(min, Math.min(next, max));
-    zoomRef.current = normalized;
-    setZoom(normalized);
     if (!zoomRange || !track) return;
-    void track.applyConstraints({ advanced: [{ zoom: normalized } as MediaTrackConstraintSet] }).then(() => {
-      hardwareZoomActiveRef.current = true;
-      setHardwareZoomActive(true);
-    }).catch(() => {
-      hardwareZoomActiveRef.current = false;
-      setHardwareZoomActive(false);
-    });
+    const min = zoomRange.min;
+    const max = zoomRange.max;
+    const normalized = Math.max(min, Math.min(next, max));
+    setZoom(normalized);
+    void track.applyConstraints({ advanced: [{ zoom: normalized } as MediaTrackConstraintSet] }).catch(() => undefined);
   };
   const scanHighDefinitionPhoto = async () => {
     setHighDefinitionCapture(true);
@@ -284,11 +291,12 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       <p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p>
       <h2 id="purchase-scanner-title">{en ? "Scan one card at a time" : "Scanne une carte à la fois"}</h2>
       <div className="purchase-camera-stage">
-        <video ref={videoRef} autoPlay muted playsInline style={hardwareZoomActive ? undefined : { transform: `scale(${zoom})` }} />
+        <video ref={videoRef} autoPlay muted playsInline />
         <div className="purchase-scan-guide" aria-hidden="true"><span>{en ? "CARD" : "CARTE"}</span></div>
         <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (en ? "Move to the next card when it is detected." : "Passe à la carte suivante une fois détectée.")}</p>
       </div>
-      <label className="purchase-zoom-control">{en ? "Camera zoom" : "Zoom caméra"}<input type="range" min={zoomRange?.min ?? 1} max={zoomRange?.max ?? SOFTWARE_ZOOM_MAX} step={zoomRange?.step || 0.1} value={zoom} onChange={(event) => updateZoom(Number(event.target.value))} /><span>×{zoom.toFixed(1)}</span></label>
+      {previewResolution ? <p className="purchase-camera-quality">{en ? `Live preview: ${previewResolution}` : `Aperçu direct : ${previewResolution}`}</p> : null}
+      {zoomRange ? <label className="purchase-zoom-control">{en ? "Native camera zoom" : "Zoom caméra natif"}<input type="range" min={zoomRange.min} max={zoomRange.max} step={zoomRange.step || 0.1} value={zoom} onChange={(event) => updateZoom(Number(event.target.value))} /><span>×{zoom.toFixed(1)}</span></label> : <p className="purchase-camera-quality">{en ? "This phone does not expose live native zoom. Use the HD photo for the phone camera’s pinch zoom." : "Ce téléphone ne propose pas son zoom natif en direct. Utilise la photo HD pour le zoom pincé de l’appareil photo."}</p>}
       <button type="button" className="purchase-hd-capture" disabled={highDefinitionCapture} onClick={() => { void scanHighDefinitionPhoto(); }}>{highDefinitionCapture ? (en ? "Opening HD camera…" : "Ouverture de la caméra HD…") : (en ? "Take an HD photo (native zoom)" : "Prendre une photo HD (zoom natif)")}</button>
       <canvas ref={canvasRef} hidden />
       <p className="purchase-privacy">{en ? "Analysis is performed locally. No photo or video is saved." : "Analyse effectuée localement. Aucune photo ni vidéo n’est enregistrée."}</p>
