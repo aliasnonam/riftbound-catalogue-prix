@@ -8,6 +8,7 @@ import {
   getCollectionStatus,
   getCollectionQuantity,
   incrementCollectionQuantity,
+  addPurchasedCollectionCopy,
   isCollectionOwned,
   readCollectionState,
   withCollectionFoil,
@@ -82,6 +83,13 @@ export function useCollection() {
     setState({});
   }, [persist]);
 
+  const addPurchasedCopy = useCallback((impression: CollectionImpression, foil: boolean) => {
+    const current = readCollectionState(window.localStorage.getItem(COLLECTION_STORAGE_KEY));
+    const next = addPurchasedCollectionCopy(current, impression, foil);
+    persist(next);
+    setState(next);
+  }, [persist]);
+
   return useMemo(() => ({
     ready,
     state,
@@ -95,7 +103,8 @@ export function useCollection() {
     setMissing: (impressionId: string) => setStatus(impressionId, "missing"),
     setFoil,
     addCopy,
+    addPurchasedCopy,
     restore,
     clear,
-  }), [addCopy, clear, ready, restore, setFoil, setStatus, state]);
+  }), [addCopy, addPurchasedCopy, clear, ready, restore, setFoil, setStatus, state]);
 }

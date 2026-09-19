@@ -1,9 +1,10 @@
 import type { CollectionImpression } from "@/lib/collection";
-import { getPrimaryVariantPrice, type PriceMode } from "@/lib/pricing";
+import { getPrimaryVariantPrice, getVariantNormalPrice, getVariantFoilPrice, type PriceMode } from "@/lib/pricing";
 
 export const PURCHASE_SESSIONS_STORAGE_KEY = "riftbound-purchase-sessions-v1";
 export const PURCHASE_SESSIONS_CHANGE_EVENT = "riftbound-purchase-sessions-change";
 export const PURCHASE_SESSIONS_VERSION = 1;
+export type PurchaseFinish = "normal" | "foil";
 
 export type PurchaseSessionItem = {
   id: string;
@@ -20,6 +21,9 @@ export type PurchaseSessionItem = {
   /** Quantity at the moment this card was added to the potential purchase. */
   ownedQuantity?: number;
   cardmarketPrice: number | null;
+  /** Optional for sessions saved before finish selection was available. */
+  finish?: PurchaseFinish;
+  finishPrices?: { normal: number | null; foil: number | null };
   priceMode: PriceMode;
   sellerPrice: number | null;
   addedAt: string;
@@ -123,6 +127,7 @@ export function createPurchaseSessionItem(
   priceMode: PriceMode,
   sellerPrice: number | null,
   now = new Date(),
+  finish: PurchaseFinish = "normal",
 ): PurchaseSessionItem {
   return {
     id: `purchase-card-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -137,11 +142,38 @@ export function createPurchaseSessionItem(
     cardmarketUrl: impression.row.cardmarketUrl,
     collectionStatus,
     ...(collectionStatus === "owned" ? { ownedQuantity: Math.max(1, Math.floor(ownedQuantity)) } : {}),
-    cardmarketPrice: getPrimaryVariantPrice(impression.variant, priceMode),
+    cardmarketPrice: getPurchasePrice(impression, priceMode, finish),
+    ...(impression.variant.pricing === "dual" ? {
+      finish,
+      finishPrices: {
+        normal: getVariantNormalPrice(impression.variant, priceMode),
+        foil: getVariantFoilPrice(impression.variant, priceMode),
+      },
+    } : {}),
     priceMode,
     sellerPrice,
     addedAt: now.toISOString(),
   };
+}
+
+export function getPurchasePrice(impression: CollectionImpression, priceMode: PriceMode, finish: PurchaseFinish) {
+  if (impression.variant.pricing !== "dual") return getPrimaryVariantPrice(impression.variant, priceMode);
+  return finish === "foil" ? getVariantFoilPrice(impression.variant, priceMode) : getVariantNormalPrice(impression.variant, priceMode);
+}
+
+export function hasPurchaseFinish(item: PurchaseSessionItem) {
+  return item.variant === "base" && /^(common|uncommon)$/i.test(item.rarity);
+}
+
+export function withPurchaseFinish(item: PurchaseSessionItem, finish: PurchaseFinish, impression?: CollectionImpression): PurchaseSessionItem {
+  if (!hasPurchaseFinish(item)) return item;
+  // Keep both prices from the same snapshot. Old sessions use the catalogue
+  // once when the user first selects a finish; missing prices never fall back.
+  const finishPrices = item.finishPrices ?? {
+    normal: impression ? getVariantNormalPrice(impression.variant, item.priceMode) : null,
+    foil: impression ? getVariantFoilPrice(impression.variant, item.priceMode) : null,
+  };
+  return { ...item, finish, finishPrices, cardmarketPrice: finishPrices[finish] };
 }
 
 export function addPurchaseSessionItem(session: PurchaseSession, item: PurchaseSessionItem): PurchaseSession {

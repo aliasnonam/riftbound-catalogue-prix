@@ -26,8 +26,9 @@ export type NativePurchaseCamera = {
   updateBounds(options: { x: number; y: number; width: number; height: number; devicePixelRatio: number; viewportScale: number }): Promise<void>;
   setZoomRatio(options: { zoom: number }): Promise<{ zoom: number }>;
   focus(options: { x: number; y: number }): Promise<void>;
+  scan(): Promise<{ text: string }>;
   stop(): Promise<void>;
-  addListener(eventName: "textRecognized", listenerFunc: (event: { text: string }) => void): Promise<PluginListenerHandle>;
+  addListener(eventName: "scanRequested", listenerFunc: () => void): Promise<PluginListenerHandle>;
   addListener(eventName: "diagnostics", listenerFunc: (event: PurchaseCameraDiagnostics) => void): Promise<PluginListenerHandle>;
   addListener(eventName: "focusStatus", listenerFunc: (event: { success: boolean }) => void): Promise<PluginListenerHandle>;
 };

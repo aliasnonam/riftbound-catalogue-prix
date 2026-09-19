@@ -1,37 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 
 import { CardPreviewThumb } from "@/app/components/catalog/CardPreview";
 import { ScanCardPrices, ScanFoilOwnership } from "@/app/components/scan-card-details";
 import { useSiteLanguage } from "@/app/lib/site-language";
 import { PurchaseCamera, type NativePurchaseCamera, type PurchaseCameraDiagnostics } from "@/app/lib/native-purchase-camera";
-import { findCardFromDetectedText, findCardFromScan, parseCardScanText, type ResolvedCardScan } from "@/lib/card-scan";
+import type { ResolvedCardScan } from "@/lib/card-scan";
+import { getPurchaseCodeCrop, resolvePurchaseCode } from "@/lib/purchase-scan";
 import type { CollectionImpression } from "@/lib/collection";
-import { getPrimaryVariantPrice, getVariantNormalPrice, type PriceMode } from "@/lib/pricing";
+import type { PriceMode } from "@/lib/pricing";
 import {
   calculatePriceDifference,
   calculatePriceDifferencePercent,
   createPurchaseSession,
   createPurchaseSessionItem,
   getPurchasePriceTone,
+  getPurchasePrice,
   normaliseSellerPrice,
 } from "@/lib/purchase-sessions";
 import { useCollection } from "@/hooks/use-collection";
 import { usePurchaseSessions } from "@/hooks/use-purchase-sessions";
 
-// The preview stays the native MediaStream. These values apply only to the
-// separate OCR work so it cannot starve the Android WebView's video renderer.
-const FRAME_INTERVAL_MS = 850;
-const AUTOFOCUS_SETTLE_MS = 850;
-const ANALYSIS_MAX_WIDTH = 1280;
 // Disabled by default in every release. Developers can opt in on a local URL
 // with ?cameraDebug=1 when inspecting an Android/WebView session remotely.
 const CAMERA_DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("cameraDebug") === "1";
 const EURO = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
 
-type ReaderState = "starting" | "scanning" | "error";
+type ReaderState = "starting" | "ready" | "error";
 type CachedPriceStatus = { updatedAt?: string };
 type ZoomRange = { min: number; max: number; step: number };
 type CameraCapabilities = MediaTrackCapabilities & { zoom?: ZoomRange; focusMode?: string[] };
@@ -161,12 +158,13 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const streamRef = useRef<MediaStream | null>(null);
   const nativeCameraRef = useRef<NativePurchaseCamera | null>(null);
   const nativeListenerCleanupRef = useRef<(() => void) | null>(null);
+  const updateNativeBoundsRef = useRef<(() => void) | null>(null);
   const zoomFrameRef = useRef<number | null>(null);
   const pendingZoomRef = useRef<number | null>(null);
-  const intervalRef = useRef<number | null>(null);
   const workingRef = useRef(false);
-  const lastDetectedIdRef = useRef<string | null>(null);
-  const autofocusReadyAtRef = useRef(0);
+  const scanGenerationRef = useRef(0);
+  const scanRequestRef = useRef<() => void>(() => {});
+  const [scanBusy, setScanBusy] = useState(false);
   const [readerState, setReaderState] = useState<ReaderState>("starting");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<ResolvedCardScan | null>(null);
@@ -179,20 +177,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [previewResolution, setPreviewResolution] = useState<string | null>(null);
   const [cameraBackend, setCameraBackend] = useState<"CameraX" | "Web" | null>(null);
   const [cameraDiagnostics, setCameraDiagnostics] = useState<PurchaseCameraDiagnostics | null>(null);
-  const [highDefinitionCapture, setHighDefinitionCapture] = useState(false);
-  const [cameraRestart, setCameraRestart] = useState(0);
-  const resolveRecognizedText = (detectedText: string, force = false) => {
-    const parsed = parseCardScanText(detectedText);
-    const resolved = parsed.ok
-      ? findCardFromScan(parsed.value, impressions, detectedText)
-      : findCardFromDetectedText(detectedText, impressions);
-    if (resolved.kind !== "match" || (!force && resolved.impression.impressionId === lastDetectedIdRef.current)) return resolved;
-    lastDetectedIdRef.current = resolved.impression.impressionId;
-    setResult(resolved);
-    setSellerInput("");
-    setAdded(sessionItems.includes(resolved.impression.impressionId));
-    return resolved;
-  };
 
   useEffect(() => {
     const readStatus = () => {
@@ -207,11 +191,11 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   }, []);
 
   const stopCamera = () => {
-    if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
-    intervalRef.current = null;
-    autofocusReadyAtRef.current = 0;
+    scanGenerationRef.current += 1;
+    workingRef.current = false;
     nativeListenerCleanupRef.current?.();
     nativeListenerCleanupRef.current = null;
+    updateNativeBoundsRef.current = null;
     if (zoomFrameRef.current !== null) window.cancelAnimationFrame(zoomFrameRef.current);
     zoomFrameRef.current = null;
     pendingZoomRef.current = null;
@@ -240,7 +224,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       };
     };
     try {
-      const textListener = await PurchaseCamera.addListener("textRecognized", ({ text }) => resolveRecognizedText(text));
+      const scanListener = await PurchaseCamera.addListener("scanRequested", () => scanRequestRef.current());
       const diagnosticsListener = await PurchaseCamera.addListener("diagnostics", (diagnostics: PurchaseCameraDiagnostics) => {
         setCameraDiagnostics((current) => ({ ...current, ...diagnostics }));
         if (diagnostics.previewWidth && diagnostics.previewHeight) {
@@ -256,7 +240,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         setCameraDiagnostics((current) => current ? { ...current, focusSuccess: success } : current);
       });
       nativeListenerCleanupRef.current = () => {
-        void textListener.remove();
+        void scanListener.remove();
         void diagnosticsListener.remove();
         void focusListener.remove();
       };
@@ -272,6 +256,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         if (typeof diagnostics.zoom === "number") setZoom(roundDisplayedZoom(diagnostics.zoom));
       }
       const updateBounds = () => { void PurchaseCamera.updateBounds(options()).catch(() => undefined); };
+      updateNativeBoundsRef.current = updateBounds;
       const scrollContainer = stage.closest(".purchase-scanner-backdrop");
       window.addEventListener("resize", updateBounds);
       window.addEventListener("scroll", updateBounds, { passive: true });
@@ -285,12 +270,12 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         window.visualViewport?.removeEventListener("resize", updateBounds);
         window.visualViewport?.removeEventListener("scroll", updateBounds);
         scrollContainer?.removeEventListener("scroll", updateBounds);
-        void textListener.remove();
+        void scanListener.remove();
         void diagnosticsListener.remove();
         void focusListener.remove();
       };
       setCameraBackend("CameraX");
-      setReaderState("scanning");
+      setReaderState("ready");
       return true;
     } catch {
       nativeListenerCleanupRef.current?.();
@@ -373,51 +358,10 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         setPreviewResolution(videoRef.current.videoWidth && videoRef.current.videoHeight ? `${videoRef.current.videoWidth} × ${videoRef.current.videoHeight}` : (actualSettings?.width && actualSettings.height ? `${actualSettings.width} × ${actualSettings.height}` : null));
         logCameraDiagnostics(track, videoRef.current, devices);
         if (cancelled) return;
-        autofocusReadyAtRef.current = performance.now() + AUTOFOCUS_SETTLE_MS;
         setCameraBackend("Web");
         setCameraDiagnostics(null);
-        setReaderState("scanning");
-        const analyseFrame = async () => {
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
-          if (!video || !canvas || workingRef.current || performance.now() < autofocusReadyAtRef.current || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-          workingRef.current = true;
-          try {
-            const width = video.videoWidth;
-            const height = video.videoHeight;
-            if (!width || !height) return;
-            // The canvas is OCR-only; it does not paint the preview. Keeping
-            // it independent avoids lowering the user's live video quality.
-            const cardRatio = 63 / 88;
-            let sourceHeight = Math.round(height * 0.92);
-            let sourceWidth = Math.round(sourceHeight * cardRatio);
-            if (sourceWidth > width * 0.92) {
-              sourceWidth = Math.round(width * 0.92);
-              sourceHeight = Math.round(sourceWidth / cardRatio);
-            }
-            const sourceX = Math.round((width - sourceWidth) / 2);
-            const sourceY = Math.round((height - sourceHeight) / 2);
-            // This smaller canvas is OCR-only. It is never assigned to the
-            // video element, so reducing its work preserves preview FPS.
-            canvas.width = Math.min(ANALYSIS_MAX_WIDTH, sourceWidth);
-            canvas.height = Math.round(canvas.width / cardRatio);
-            const context = canvas.getContext("2d");
-            if (!context) return;
-            context.imageSmoothingEnabled = true;
-            context.imageSmoothingQuality = "high";
-            context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
-            const base64Image = canvas.toDataURL("image/jpeg", 0.88).split(",")[1];
-            if (!base64Image) return;
-            const { CapacitorPluginMlKitTextRecognition } = await import("@pantrist/capacitor-plugin-ml-kit-text-recognition");
-            const recognized = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image });
-            resolveRecognizedText(recognized.text);
-          } catch {
-            // OCR misses are expected during movement; keep the live camera usable.
-          } finally {
-            workingRef.current = false;
-          }
-        };
-        intervalRef.current = window.setInterval(() => { void analyseFrame(); }, FRAME_INTERVAL_MS);
+        setReaderState("ready");
+
       } catch (error) {
         if (!cancelled) {
           setReaderState("error");
@@ -430,11 +374,11 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   // The scanner owns its stream for its full lifetime. Recreating it only when
   // the session changes keeps the preview fluid while price input changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, cameraRestart]);
+  }, [sessionId]);
 
   const match = result?.kind === "match" ? result.impression : null;
   const sellerPrice = normaliseSellerPrice(sellerInput);
-  const cardmarketPrice = match ? getPrimaryVariantPrice(match.variant, priceMode) : null;
+  const cardmarketPrice = match ? getPurchasePrice(match, priceMode, "normal") : null;
   const difference = calculatePriceDifference(sellerPrice, cardmarketPrice);
   const differencePercent = calculatePriceDifferencePercent(sellerPrice, cardmarketPrice);
   const owned = match ? collection.isOwned(match.impressionId) : false;
@@ -465,43 +409,66 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       if (track) void track.applyConstraints({ advanced: [{ zoom: pending } as CameraConstraintSet] }).catch(() => undefined);
     });
   };
-  const scanHighDefinitionPhoto = async () => {
-    setHighDefinitionCapture(true);
-    setReaderState("starting");
-    stopCamera();
+  const scanCode = async () => {
+    if (workingRef.current || readerState !== "ready") return;
+    workingRef.current = true;
+    const generation = ++scanGenerationRef.current;
+    setScanBusy(true);
+    setResult(null);
+    setSellerInput("");
+    setAdded(false);
+    setMessage("");
     try {
-      const [{ Camera, CameraResultType, CameraSource }, { CapacitorPluginMlKitTextRecognition }] = await Promise.all([
-        import("@capacitor/camera"),
-        import("@pantrist/capacitor-plugin-ml-kit-text-recognition"),
-      ]);
-      const photo = await Camera.getPhoto({
-        source: CameraSource.Camera,
-        resultType: CameraResultType.Base64,
-        quality: 100,
-        correctOrientation: true,
-        saveToGallery: false,
-      });
-      if (!photo.base64String) throw new Error("image unavailable");
-      const recognized = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image: photo.base64String });
-      const resolved = resolveRecognizedText(recognized.text, true);
-      if (resolved.kind !== "match") {
-        setMessage(en ? "This photo did not identify one card. Try again with the name or collector line sharp." : "Cette photo n’a pas identifié une seule carte. Réessaie avec le nom ou le code net.");
+      let text: string;
+      if (nativeCameraRef.current) {
+        ({ text } = await nativeCameraRef.current.scan());
+      } else {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        const stage = cameraStageRef.current;
+        if (!video || !canvas || !stage || !video.videoWidth || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) throw new Error("preview");
+        const crop = getPurchaseCodeCrop(video.videoWidth, video.videoHeight, stage.clientWidth / stage.clientHeight);
+        canvas.width = Math.round(crop.width * 2);
+        canvas.height = Math.round(crop.height * 2);
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("canvas");
+        context.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
+        const base64Image = canvas.toDataURL("image/jpeg", 1).split(",")[1];
+        const { CapacitorPluginMlKitTextRecognition } = await import("@pantrist/capacitor-plugin-ml-kit-text-recognition");
+        ({ text } = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image }));
       }
-    } catch (error) {
-      if (!(error instanceof Error && /cancel/i.test(error.message))) {
-        setMessage(en ? "The HD photo could not be read. Try again in even light without reflections." : "La photo HD n’a pas pu être lue. Réessaie avec une lumière uniforme, sans reflet.");
+      if (generation !== scanGenerationRef.current) return;
+      const resolved = resolvePurchaseCode(text, impressions);
+      if (resolved.kind === "match") {
+        setResult(resolved);
+        setAdded(sessionItems.includes(resolved.impression.impressionId));
+        setMessage(en ? "Card ready. You can add it before scanning another." : "Carte trouvée. Tu peux l’ajouter avant de lancer un autre scan.");
+      } else {
+        setMessage(en ? "Code unreadable or ambiguous. Place the bottom-left code in the small frame, hold still and try again." : "Code illisible ou ambigu. Place le code en bas à gauche dans le petit cadre, reste immobile et réessaie.");
       }
+    } catch {
+      if (generation === scanGenerationRef.current) setMessage(en ? "Could not read the code. Hold still, avoid glare and tap Scan again." : "Impossible de lire le code. Reste immobile, évite les reflets et appuie à nouveau sur Scanner.");
     } finally {
-      setHighDefinitionCapture(false);
-      setCameraRestart((value) => value + 1);
+      if (generation === scanGenerationRef.current) {
+        workingRef.current = false;
+        setScanBusy(false);
+      }
     }
   };
+  useEffect(() => { scanRequestRef.current = () => { void scanCode(); }; });
+  useEffect(() => {
+    // A detected card inserts the quick-add panel above the native preview.
+    // Keep its physical bounds aligned even when the user has not scrolled.
+    const frame = window.requestAnimationFrame(() => updateNativeBoundsRef.current?.());
+    return () => window.cancelAnimationFrame(frame);
+  });
 
   return <div className="purchase-scanner-backdrop" role="presentation">
     <section className="purchase-scanner-dialog" role="dialog" aria-modal="true" aria-labelledby="purchase-scanner-title">
       <button className="collection-scanner-close" type="button" aria-label={en ? "Close purchase mode" : "Fermer le mode achat"} onClick={() => { stopCamera(); onClose(); }}>×</button>
       <p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p>
       <h2 id="purchase-scanner-title">{en ? "Scan one card at a time" : "Scanne une carte à la fois"}</h2>
+      <p className="purchase-scan-instructions">{en ? <>Place the <strong>code at the bottom left of the card</strong> (e.g. OGN · 010/298) inside the small highlighted frame. Hold still, then tap <strong>Scan the code</strong> or the camera preview. The result stays until your next scan.</> : <>Place le <strong>code en bas à gauche de la carte</strong> (ex. OGN · 010/298) dans le petit cadre coloré. Reste immobile, puis touche <strong>Scanner le code</strong> ou l’aperçu caméra. Le résultat reste affiché jusqu’au prochain scan.</>}</p>
       {match ? <div className="purchase-quick-add" aria-live="polite">
         <div>
           <p className={`purchase-ownership ${owned ? "is-owned" : "is-missing"}`}>{owned ? (en ? `✓ Owned · ×${ownedQuantity}` : `✓ Possédée · ×${ownedQuantity}`) : (en ? "✕ Missing" : "✕ Manquante")}</p>
@@ -510,12 +477,14 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         </div>
         <button type="button" disabled={added} onClick={add}>{added ? (en ? "Added" : "Ajoutée") : (en ? "Quick add" : "Ajout rapide")}</button>
       </div> : null}
-      <div ref={cameraStageRef} className={`purchase-camera-stage${cameraBackend === "CameraX" ? " is-native-camera" : ""}`}>
+      <div ref={cameraStageRef} onClick={() => { if (cameraBackend === "Web") void scanCode(); }} className={`purchase-camera-stage${cameraBackend === "CameraX" ? " is-native-camera" : ""}`}>
         <video ref={videoRef} autoPlay muted playsInline />
-        <div className="purchase-scan-guide" aria-hidden="true"><span>{en ? "CARD" : "CARTE"}</span></div>
-        <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (en ? "Move to the next card when it is detected." : "Passe à la carte suivante une fois détectée.")}</p>
+        <div className="purchase-scan-guide" aria-hidden="true" /><div className="purchase-code-guide" aria-hidden="true"><span>{en ? "BOTTOM-LEFT CODE" : "CODE EN BAS À GAUCHE"}</span></div>
+        <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (en ? "Tap to read the code" : "Touche pour lire le code")}</p>
       </div>
-      {previewResolution ? <p className="purchase-camera-quality">{en ? `${cameraBackend === "CameraX" ? "CameraX" : "Live preview"}: ${previewResolution}` : `${cameraBackend === "CameraX" ? "CameraX" : "Aperçu direct"} : ${previewResolution}`}</p> : null}
+      <button type="button" className="purchase-read-code" disabled={scanBusy || readerState !== "ready"} onClick={() => { void scanCode(); }}>{scanBusy ? (en ? "Focusing and reading…" : "Mise au point et lecture…") : (en ? "Scan the code" : "Scanner le code")}</button>
+      <p className="purchase-scan-feedback" role="status">{message}</p>
+      {CAMERA_DEBUG && previewResolution ? <p className="purchase-camera-quality">{en ? `${cameraBackend === "CameraX" ? "CameraX" : "Live preview"}: ${previewResolution}` : `${cameraBackend === "CameraX" ? "CameraX" : "Aperçu direct"} : ${previewResolution}`}</p> : null}
       {cameraDiagnostics?.debug ? <dl className="purchase-camera-debug">
         <div><dt>{en ? "Backend" : "Backend"}</dt><dd>{cameraDiagnostics.backend}</dd></div>
         <div><dt>{en ? "Camera" : "Caméra"}</dt><dd>{cameraDiagnostics.cameraId || "?"} · {cameraDiagnostics.lens || "?"}</dd></div>
@@ -525,8 +494,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         <div><dt>{en ? "Zoom" : "Zoom"}</dt><dd>×{cameraDiagnostics.zoom?.toFixed(1) ?? "?"} ({cameraDiagnostics.minZoom?.toFixed(1) ?? "?"}–{cameraDiagnostics.maxZoom?.toFixed(1) ?? "?"})</dd></div>
         <div><dt>{en ? "Manual focus" : "Focus manuel"}</dt><dd>{cameraDiagnostics.focusSuccess === undefined ? "—" : cameraDiagnostics.focusSuccess ? (en ? "success" : "réussi") : (en ? "failed" : "échoué")}</dd></div>
       </dl> : null}
-      {zoomRange ? <label className="purchase-zoom-control">{en ? "Native camera zoom" : "Zoom caméra natif"}<input type="range" min="0" max={ZOOM_SLIDER_MAX} step="1" value={zoomToSliderPosition(zoom, zoomRange)} onChange={(event) => updateZoom(sliderPositionToZoom(Number(event.target.value), zoomRange))} /><span>×{zoom.toFixed(1)}</span></label> : <p className="purchase-camera-quality">{en ? "This phone does not expose live native zoom. Use the HD photo for the phone camera’s pinch zoom." : "Ce téléphone ne propose pas son zoom natif en direct. Utilise la photo HD pour le zoom pincé de l’appareil photo."}</p>}
-      <button type="button" className="purchase-hd-capture" disabled={highDefinitionCapture} onClick={() => { void scanHighDefinitionPhoto(); }}>{highDefinitionCapture ? (en ? "Opening HD camera…" : "Ouverture de la caméra HD…") : (en ? "Take an HD photo (native zoom)" : "Prendre une photo HD (zoom natif)")}</button>
+      {zoomRange ? <label className="purchase-zoom-control">{en ? "Native camera zoom" : "Zoom caméra natif"}<input type="range" disabled={scanBusy} min="0" max={ZOOM_SLIDER_MAX} step="1" value={zoomToSliderPosition(zoom, zoomRange)} onChange={(event) => updateZoom(sliderPositionToZoom(Number(event.target.value), zoomRange))} /><span>×{zoom.toFixed(1)}</span></label> : <p className="purchase-camera-quality">{en ? "Move the phone closer until the code is legible inside the small frame." : "Rapproche le téléphone pour que le code soit lisible dans le petit cadre."}</p>}
       <canvas ref={canvasRef} hidden />
       <p className="purchase-privacy">{en ? "Analysis is performed locally. No photo or video is saved." : "Analyse effectuée localement. Aucune photo ni vidéo n’est enregistrée."}</p>
       {match ? <div className="purchase-scan-result">
@@ -539,7 +507,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
           <ScanCardPrices variant={match.variant} priceMode={priceMode} en={en} />
           <small className="purchase-price-date">{priceUpdatedAt ? `${en ? "Last price update: " : "Dernière mise à jour du prix : "}${new Intl.DateTimeFormat(language === "en" ? "en-GB" : "fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(priceUpdatedAt))}` : (en ? "Latest price available in the catalogue" : "Dernier prix disponible dans le catalogue")}</small>
           <label>{en ? "Seller price" : "Prix vendeur"}<input inputMode="decimal" type="text" value={sellerInput} onChange={(event) => setSellerInput(event.target.value)} placeholder="30,00 €" /></label>
-          {match.variant.pricing === "dual" && difference !== null ? <small className="purchase-price-date">{en ? "Compared with: " : "Comparé au prix : "}{getVariantNormalPrice(match.variant, priceMode) !== null ? "Normal" : "Foil"}</small> : null}
+          {match.variant.pricing === "dual" && difference !== null ? <small className="purchase-price-date">{en ? "Compared with: " : "Comparé au prix : "}Normal</small> : null}
           {difference !== null && differencePercent !== null ? <p className={`purchase-difference is-${tone}`}><strong>{difference > 0 ? "+" : ""}{EURO.format(difference)}</strong><span>{differencePercent > 0 ? "+" : ""}{differencePercent.toLocaleString(language === "en" ? "en-GB" : "fr-FR", { maximumFractionDigits: 1 })} %</span></p> : null}
           <button type="button" disabled={added} onClick={add}>{added ? (en ? "Already in this purchase" : "Déjà dans cet achat") : owned ? (en ? "Add anyway" : "Ajouter quand même") : (en ? "Add to potential purchase" : "Ajouter à l’achat potentiel")}</button>
         </div>

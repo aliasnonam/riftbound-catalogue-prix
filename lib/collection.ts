@@ -276,6 +276,12 @@ export function withCollectionFoil(
   };
 }
 
+/** Buying a normal copy must not erase a foil that was already owned. */
+export function addPurchasedCollectionCopy(state: CollectionState, impression: CollectionImpression, foil: boolean): CollectionState {
+  const next = incrementCollectionQuantity(state, impression.impressionId);
+  return foil ? withCollectionFoil(next, impression, true) : next;
+}
+
 export function readCollectionState(raw: string | null): CollectionState {
   if (!raw) return {};
   try {

@@ -9,11 +9,17 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.graphics.Canvas;
+import android.graphics.Bitmap;
+import android.graphics.Matrix;
+import android.graphics.Rect;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.util.Size;
+import android.util.Rational;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -30,6 +36,8 @@ import androidx.camera.core.ImageProxy;
 import androidx.camera.core.MeteringPoint;
 import androidx.camera.core.Preview;
 import androidx.camera.core.ZoomState;
+import androidx.camera.core.UseCaseGroup;
+import androidx.camera.core.ViewPort;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
@@ -40,7 +48,6 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.google.android.gms.tasks.Task;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.TextRecognition;
@@ -61,8 +68,9 @@ import java.util.Locale;
  */
 @CapacitorPlugin(name = "PurchaseCamera")
 public class PurchaseCameraPlugin extends Plugin {
-  private static final long ANALYSIS_INTERVAL_MS = 850L;
   private static final int ACCENT = Color.rgb(235, 190, 94);
+  // Same visible-preview fractions as lib/purchase-scan.ts and the web guide.
+  private static final float CODE_X = .055f, CODE_Y = .855f, CODE_WIDTH = .58f, CODE_HEIGHT = .09f;
 
   private final ExecutorService analysisExecutor = Executors.newSingleThreadExecutor();
   private final AtomicBoolean analysisBusy = new AtomicBoolean(false);
@@ -73,7 +81,8 @@ public class PurchaseCameraPlugin extends Plugin {
   private PreviewView previewView;
   private ScannerOverlay overlay;
   private TextRecognizer recognizer;
-  private long lastAnalysisAt;
+  private final Handler mainHandler = new Handler(Looper.getMainLooper());
+  private volatile PluginCall pendingScan;
   private volatile long analysisBlockedUntil;
   private int previewWidth;
   private int previewHeight;
@@ -144,6 +153,28 @@ public class PurchaseCameraPlugin extends Plugin {
   }
 
   @PluginMethod
+  public void scan(PluginCall call) {
+    getActivity().runOnUiThread(() -> {
+      if (camera == null || previewView == null) {
+        call.reject("Camera is not ready.");
+        return;
+      }
+      if (pendingScan != null || analysisBusy.get()) {
+        call.reject("A scan is already in progress.");
+        return;
+      }
+      pendingScan = call;
+      requestFocus(CODE_X + CODE_WIDTH / 2f, CODE_Y + CODE_HEIGHT / 2f);
+      mainHandler.postDelayed(() -> {
+        if (pendingScan == call) {
+          pendingScan = null;
+          call.reject("Reading timed out. Hold still and try again.");
+        }
+      }, 6500L);
+    });
+  }
+
+  @PluginMethod
   public void stop(PluginCall call) {
     getActivity().runOnUiThread(() -> {
       stopCamera();
@@ -179,8 +210,17 @@ public class PurchaseCameraPlugin extends Plugin {
       overlay = new ScannerOverlay();
       scannerLayer.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
       scannerLayer.setOnTouchListener((view, event) -> {
-        if (event.getAction() == MotionEvent.ACTION_UP && previewView != null) {
-          requestFocus(event.getX() / Math.max(1f, previewView.getWidth()), event.getY() / Math.max(1f, previewView.getHeight()));
+        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+          view.setTag(new float[] { event.getX(), event.getY() });
+        } else if (event.getAction() == MotionEvent.ACTION_UP && previewView != null) {
+          float[] down = (float[]) view.getTag();
+          float slop = 12f * getContext().getResources().getDisplayMetrics().density;
+          if (down != null && Math.hypot(event.getX() - down[0], event.getY() - down[1]) < slop) {
+            notifyListeners("scanRequested", new JSObject());
+          }
+          view.setTag(null);
+        } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+          view.setTag(null);
         }
         return true;
       });
@@ -224,7 +264,8 @@ public class PurchaseCameraPlugin extends Plugin {
       return;
     }
     Preview.Builder previewBuilder = new Preview.Builder()
-      .setTargetResolution(new Size(1920, 1080));
+      .setTargetResolution(new Size(1920, 1080))
+      .setTargetRotation(getActivity().getWindowManager().getDefaultDisplay().getRotation());
     // Ask the Android camera device for real continuous autofocus and normal
     // auto-exposure. This is a camera request, not a WebView/CSS hint.
     Camera2Interop.Extender<Preview> previewInterop = new Camera2Interop.Extender<>(previewBuilder);
@@ -246,7 +287,8 @@ public class PurchaseCameraPlugin extends Plugin {
     });
 
     ImageAnalysis analysis = new ImageAnalysis.Builder()
-      .setTargetResolution(new Size(1280, 720))
+      .setTargetResolution(new Size(1920, 1080))
+      .setTargetRotation(getActivity().getWindowManager().getDefaultDisplay().getRotation())
       .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
       .build();
     analysis.setAnalyzer(analysisExecutor, this::analyseFrame);
@@ -254,7 +296,15 @@ public class PurchaseCameraPlugin extends Plugin {
     cameraProvider.unbindAll();
     // CameraX's DEFAULT_BACK_CAMERA selects Android's standard rear logical
     // camera; unlike WebView it provides native AF/AE and zoom controls.
-    camera = cameraProvider.bindToLifecycle((LifecycleOwner) getActivity(), CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis);
+    // CameraX maps both crop rects to the same sensor area. Rotate the analysis
+    // crop upright before applying the small rectangle drawn on the preview.
+    // https://developer.android.com/media/camera/camerax/configuration
+    ViewPort viewPort = new ViewPort.Builder(new Rational(previewWidth, previewHeight),
+      getActivity().getWindowManager().getDefaultDisplay().getRotation())
+      .setScaleType(ViewPort.FILL_CENTER).build();
+    UseCaseGroup group = new UseCaseGroup.Builder().setViewPort(viewPort)
+      .addUseCase(preview).addUseCase(analysis).build();
+    camera = cameraProvider.bindToLifecycle((LifecycleOwner) getActivity(), CameraSelector.DEFAULT_BACK_CAMERA, group);
     analysisBlockedUntil = System.currentTimeMillis() + 850L;
     afState = "continuous-picture";
     aeState = "searching";
@@ -282,26 +332,39 @@ public class PurchaseCameraPlugin extends Plugin {
   }
 
   private void analyseFrame(ImageProxy imageProxy) {
+    PluginCall call = pendingScan;
     long now = System.currentTimeMillis();
-    if (now < analysisBlockedUntil || "passive-scan".equals(afState) || "active-scan".equals(afState) || now - lastAnalysisAt < ANALYSIS_INTERVAL_MS || !analysisBusy.compareAndSet(false, true)) {
+    if (call == null || now < analysisBlockedUntil || "passive-scan".equals(afState) || "active-scan".equals(afState) || !analysisBusy.compareAndSet(false, true)) {
       imageProxy.close();
       return;
     }
-    lastAnalysisAt = now;
     if (imageProxy.getImage() == null || recognizer == null) {
       analysisBusy.set(false);
       imageProxy.close();
       return;
     }
-    InputImage image = InputImage.fromMediaImage(imageProxy.getImage(), imageProxy.getImageInfo().getRotationDegrees());
-    recognizer.process(image)
+    final Bitmap code;
+    try {
+      code = cropCodeImage(imageProxy);
+    } catch (Exception error) {
+      analysisBusy.set(false);
+      imageProxy.close();
+      getActivity().runOnUiThread(() -> {
+        if (pendingScan == call) { pendingScan = null; call.reject("Could not read the code area.", error); }
+      });
+      return;
+    }
+    recognizer.process(InputImage.fromBitmap(code, 0))
       .addOnSuccessListener(result -> {
-        String text = result.getText();
-        if (!text.trim().isEmpty()) {
+        if (pendingScan == call) {
+          pendingScan = null;
           JSObject payload = new JSObject();
-          payload.put("text", text);
-          notifyListeners("textRecognized", payload);
+          payload.put("text", result.getText());
+          call.resolve(payload);
         }
+      })
+      .addOnFailureListener(error -> {
+        if (pendingScan == call) { pendingScan = null; call.reject("Code recognition failed.", error); }
       })
       .addOnCompleteListener(result -> {
         int width = imageProxy.getWidth();
@@ -312,8 +375,27 @@ public class PurchaseCameraPlugin extends Plugin {
           notifyDiagnostics();
         });
         analysisBusy.set(false);
+        code.recycle();
         imageProxy.close();
       });
+  }
+
+  private Bitmap cropCodeImage(ImageProxy proxy) {
+    Bitmap full = proxy.toBitmap();
+    Rect rect = proxy.getCropRect();
+    Matrix rotation = new Matrix();
+    rotation.postRotate(proxy.getImageInfo().getRotationDegrees());
+    Bitmap upright = Bitmap.createBitmap(full, rect.left, rect.top, rect.width(), rect.height(), rotation, true);
+    int x = Math.round(upright.getWidth() * CODE_X);
+    int y = Math.round(upright.getHeight() * CODE_Y);
+    int width = Math.min(upright.getWidth() - x, Math.max(1, Math.round(upright.getWidth() * CODE_WIDTH)));
+    int height = Math.min(upright.getHeight() - y, Math.max(1, Math.round(upright.getHeight() * CODE_HEIGHT)));
+    Bitmap crop = Bitmap.createBitmap(upright, x, y, width, height);
+    Bitmap enlarged = Bitmap.createScaledBitmap(crop, width * 2, height * 2, true);
+    if (crop != enlarged) crop.recycle();
+    if (upright != crop && upright != enlarged) upright.recycle();
+    if (full != upright && full != crop && full != enlarged) full.recycle();
+    return enlarged;
   }
 
   private void requestFocus(float normalizedX, float normalizedY) {
@@ -382,9 +464,11 @@ public class PurchaseCameraPlugin extends Plugin {
   }
 
   private void stopCamera() {
+    PluginCall call = pendingScan;
+    pendingScan = null;
+    if (call != null) call.reject("Scan cancelled.");
     if (cameraProvider != null) cameraProvider.unbindAll();
     camera = null;
-    analysisBusy.set(false);
     analysisBlockedUntil = 0L;
     afState = "stopped";
     aeState = "stopped";
@@ -472,12 +556,16 @@ public class PurchaseCameraPlugin extends Plugin {
       super.onDraw(canvas);
       float width = getWidth();
       float height = getHeight();
-      float guideHeight = height * .78f;
-      float guideWidth = Math.min(width * .78f, guideHeight * 63f / 88f);
+      float guideHeight = height * .89f;
+      float guideWidth = width * .89f;
       float left = (width - guideWidth) / 2f;
       float top = (height - guideHeight) / 2f;
       canvas.drawRoundRect(new RectF(left, top, left + guideWidth, top + guideHeight), 16f, 16f, border);
-      canvas.drawText("CARTE", width / 2f, height / 2f, label);
+      RectF code = new RectF(width * CODE_X, height * CODE_Y, width * (CODE_X + CODE_WIDTH), height * (CODE_Y + CODE_HEIGHT));
+      border.setColor(Color.rgb(94, 212, 235));
+      canvas.drawRoundRect(code, 8f, 8f, border);
+      canvas.drawText("OGN · 010/298", code.centerX(), code.top - 12f, label);
+      border.setColor(ACCENT);
       if (focusX >= 0f && focusY >= 0f) {
         canvas.drawCircle(focusX, focusY, 28f * getResources().getDisplayMetrics().density, border);
       }

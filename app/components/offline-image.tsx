@@ -11,7 +11,7 @@ export function CachedCardImage({ src, onError, ...props }: ComponentPropsWithou
   const [failedRemoteSource, setFailedRemoteSource] = useState<string | null>(null);
 
   const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
-  const localSource = offlineImage?.source === src ? offlineImage.localSource : undefined;
+  const localSource = offlineImage && offlineImage.source === src ? offlineImage.localSource : undefined;
   const remoteFailed = failedRemoteSource === src;
   const waitForLocalCopy = !src || localSource === undefined && (isOffline || remoteFailed);
   const activeSource = waitForLocalCopy
