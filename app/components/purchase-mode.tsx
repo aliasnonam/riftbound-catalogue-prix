@@ -8,7 +8,7 @@ import { ScanCardPrices, ScanFoilOwnership } from "@/app/components/scan-card-de
 import { useSiteLanguage } from "@/app/lib/site-language";
 import { PurchaseCamera, type NativePurchaseCamera, type PurchaseCameraDiagnostics } from "@/app/lib/native-purchase-camera";
 import type { ResolvedCardScan } from "@/lib/card-scan";
-import { getPurchaseCodeCrop, resolvePurchaseCode, resolveAutomaticPurchaseScan } from "@/lib/purchase-scan";
+import { getPurchaseCodeCrop, resolvePurchaseCode, resolveAutomaticPurchaseScan, resolveTypedPurchaseCode, formatPurchaseScanCode, PURCHASE_CODE_EXAMPLE } from "@/lib/purchase-scan";
 import type { CollectionImpression } from "@/lib/collection";
 import type { PriceMode } from "@/lib/pricing";
 import {
@@ -175,6 +175,11 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [readerState, setReaderState] = useState<ReaderState>("starting");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<ResolvedCardScan | null>(null);
+  const [resultCode, setResultCode] = useState(PURCHASE_CODE_EXAMPLE);
+  const [codeCandidates, setCodeCandidates] = useState<CollectionImpression[]>([]);
+  const [candidateText, setCandidateText] = useState("");
+  const [typingCode, setTypingCode] = useState(false);
+  const [typedCode, setTypedCode] = useState("");
   const [priceMode, setPriceMode] = useState<PriceMode>("low");
   const [sellerInput, setSellerInput] = useState("");
   const [added, setAdded] = useState(false);
@@ -372,10 +377,12 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         setCameraDiagnostics(null);
         setReaderState("ready");
 
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setReaderState("error");
-          setMessage(error instanceof Error && error.message === "permission" ? (en ? "Camera access is required for purchase mode." : "L’accès à la caméra est nécessaire pour le mode achat.") : (en ? "The continuous camera could not be started on this device." : "La caméra continue n’a pas pu démarrer sur cet appareil."));
+          autoEnabledRef.current = false;
+          setAutoEnabled(false);
+          setMessage(en ? "Camera unavailable. You can still enter the code by hand below." : "Caméra indisponible. Tu peux quand même saisir le code à la main ci-dessous.");
         }
       }
     };
@@ -387,6 +394,40 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   }, [sessionId]);
 
   const match = result?.kind === "match" ? result.impression : null;
+  const codeLabel = match ? resultCode : PURCHASE_CODE_EXAMPLE;
+  const codeFound = Boolean(match);
+  useEffect(() => {
+    if (cameraBackend === "CameraX") void nativeCameraRef.current?.setCodeLabel({ text: codeLabel, found: codeFound }).catch(() => undefined);
+  }, [cameraBackend, codeLabel, codeFound]);
+  const pauseAutomaticScan = () => {
+    autoEpochRef.current += 1;
+    autoEnabledRef.current = false;
+    setAutoEnabled(false);
+    autoCandidateRef.current = null;
+  };
+  const lockCard = (resolved: Extract<ResolvedCardScan, { kind: "match" }>, text = "") => {
+    pauseAutomaticScan();
+    setResult(resolved);
+    setResultCode(formatPurchaseScanCode(resolved.impression, text));
+    setCodeCandidates([]);
+    setTypingCode(false);
+    setSellerInput("");
+    setAdded(sessionItems.includes(resolved.impression.impressionId));
+    setMessage(en ? "Card locked. Add it whenever you are ready, then tap Scan next card." : "Carte verrouillée. Ajoute-la tranquillement, puis touche Scanner la carte suivante.");
+  };
+  const showCodeCandidates = (candidates: CollectionImpression[], text: string) => {
+    pauseAutomaticScan();
+    setResult(null);
+    setCodeCandidates(candidates);
+    setCandidateText(text);
+    setMessage(en ? "Several versions match. Check the * or A printed after the number and choose your code." : "Plusieurs versions correspondent. Vérifie le * ou le A imprimé après le numéro et choisis ton code.");
+  };
+  const submitTypedCode = () => {
+    const resolved = resolveTypedPurchaseCode(typedCode, impressions);
+    if (resolved.kind === "match") lockCard(resolved, typedCode);
+    else if (resolved.kind === "ambiguous") showCodeCandidates(resolved.candidates, typedCode);
+    else setMessage(en ? "Code not found. Enter the three set letters and number, including * or A if printed (e.g. OGN 308*)." : "Code introuvable. Saisis les trois lettres et le numéro, avec * ou A si présent (ex. OGN 308*).");
+  };
   const sellerPrice = normaliseSellerPrice(sellerInput);
   const cardmarketPrice = match ? getPurchasePrice(match, priceMode, "normal") : null;
   const difference = calculatePriceDifference(sellerPrice, cardmarketPrice);
@@ -454,13 +495,9 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
           autoCandidateRef.current = resolved.impression.impressionId;
           return;
         }
-        autoEnabledRef.current = false;
-        setAutoEnabled(false);
-        autoCandidateRef.current = null;
-        setResult(resolved);
-        setSellerInput("");
-        setAdded(sessionItems.includes(resolved.impression.impressionId));
-        setMessage(en ? "Card locked. Add it whenever you are ready, then tap Scan next card." : "Carte verrouillée. Ajoute-la tranquillement, puis touche Scanner la carte suivante.");
+        lockCard(resolved, text);
+      } else if (resolved.kind === "ambiguous" && resolved.candidates.length > 0) {
+        showCodeCandidates(resolved.candidates, text);
       } else {
         autoCandidateRef.current = null;
         if (manual) setMessage(en ? "Code unreadable or ambiguous. Place the bottom-left code in the small frame, hold still and try again." : "Code illisible ou ambigu. Place le code en bas à gauche dans le petit cadre, reste immobile et réessaie.");
@@ -489,6 +526,8 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     setAutoEnabled(false);
     autoCandidateRef.current = null;
     setScanBusy(true);
+    setTypingCode(false);
+    setCodeCandidates([]);
     setMessage(en ? "Preparing manual code scan…" : "Préparation du scan manuel du code…");
     // Finish the current automatic frame, but discard its result. Never run
     // two OCR calls at once or let an old automatic result beat this request.
@@ -505,6 +544,9 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     setMessage("");
     if (enabled) {
       setResult(null);
+      setTypingCode(false);
+      setTypedCode("");
+      setCodeCandidates([]);
       setSellerInput("");
       setAdded(false);
     }
@@ -541,15 +583,23 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       </div> : null}
       <div ref={cameraStageRef} className={`purchase-camera-stage${cameraBackend === "CameraX" ? " is-native-camera" : ""}`}>
         <video ref={videoRef} autoPlay muted playsInline />
-        <div className="purchase-scan-guide" aria-hidden="true" /><div className="purchase-code-guide" aria-hidden="true"><span>{en ? "BOTTOM-LEFT CODE" : "CODE EN BAS À GAUCHE"}</span></div>
-        <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (autoEnabled ? (en ? "Automatic scanning…" : "Scan automatique en cours…") : (en ? "Scan paused" : "Scan en pause"))}</p>
+        <div className="purchase-scan-guide" aria-hidden="true" /><div className={`purchase-code-guide${match ? " is-found" : ""}`} aria-hidden="true"><span>{codeLabel}</span></div>
+        <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? (en ? "Camera unavailable" : "Caméra indisponible") : (autoEnabled ? (en ? "Automatic scanning…" : "Scan automatique en cours…") : (en ? "Scan paused" : "Scan en pause"))}</p>
       </div>
       <div className="purchase-scan-controls">
         <p className={"purchase-auto-status" + (match ? " is-locked" : "")} role="status">{match ? (en ? "✓ Card locked · automatic scan paused" : "✓ Carte verrouillée · scan automatique en pause") : autoEnabled ? (en ? "Automatic scan active" : "Scan automatique actif") : (en ? "Automatic scan paused" : "Scan automatique en pause")}</p>
         <button type="button" className="purchase-read-code" disabled={scanBusy || readerState !== "ready"} onClick={toggleAutoScan}>{autoEnabled ? (en ? "Pause scanning" : "Mettre le scan en pause") : match ? (en ? "Scan next card" : "Scanner la carte suivante") : (en ? "Resume automatic scan" : "Reprendre le scan automatique")}</button>
         <button type="button" className="purchase-manual-scan" disabled={scanBusy || readerState !== "ready"} onClick={requestManualScan}>{scanBusy ? (en ? "Focusing and reading…" : "Mise au point et lecture…") : (en ? "Manual scan · code only" : "Scan manuel · code uniquement")}</button>
+        <button type="button" className="purchase-type-code" disabled={scanBusy} aria-expanded={typingCode} aria-controls="purchase-code-entry" onClick={() => { pauseAutomaticScan(); setTypingCode(!typingCode); setCodeCandidates([]); setMessage(""); }}>{typingCode ? (en ? "Close keyboard entry" : "Fermer la saisie") : (en ? "Enter the code by hand" : "Saisir le code à la main")}</button>
       </div>
+      {typingCode ? <form id="purchase-code-entry" className="purchase-code-entry" onSubmit={(event) => { event.preventDefault(); submitTypedCode(); }}>
+        <label htmlFor="purchase-typed-code">{en ? "Printed card code" : "Code imprimé sur la carte"}</label>
+        <input id="purchase-typed-code" type="text" autoCapitalize="characters" autoComplete="off" spellCheck={false} value={typedCode} onChange={(event) => setTypedCode(event.target.value)} placeholder="OGN 308*" aria-describedby="purchase-code-help" />
+        <small id="purchase-code-help">{en ? "Bottom-left letters + number: OGN 007, OGN 308* or OGN 007A. Include * or A when printed. /298 is optional." : "Lettres + numéro en bas à gauche : OGN 007, OGN 308* ou OGN 007A. Recopie aussi le * ou le A s’il est présent. /298 est facultatif."}</small>
+        <button type="submit">{en ? "Find this card" : "Trouver cette carte"}</button>
+      </form> : null}
       <p className="purchase-scan-feedback" role="status">{message}</p>
+      {codeCandidates.length > 0 ? <div className="purchase-code-candidates">{codeCandidates.map((candidate) => <button key={candidate.impressionId} type="button" onClick={() => lockCard({ kind: "match", impression: candidate, confidence: "high" }, candidateText)}><strong>{formatPurchaseScanCode(candidate, candidateText)}</strong><span>{candidate.row.name}</span></button>)}</div> : null}
       {CAMERA_DEBUG && previewResolution ? <p className="purchase-camera-quality">{en ? `${cameraBackend === "CameraX" ? "CameraX" : "Live preview"}: ${previewResolution}` : `${cameraBackend === "CameraX" ? "CameraX" : "Aperçu direct"} : ${previewResolution}`}</p> : null}
       {cameraDiagnostics?.debug ? <dl className="purchase-camera-debug">
         <div><dt>{en ? "Backend" : "Backend"}</dt><dd>{cameraDiagnostics.backend}</dd></div>

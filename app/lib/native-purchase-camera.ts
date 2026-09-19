@@ -27,6 +27,7 @@ export type NativePurchaseCamera = {
   setZoomRatio(options: { zoom: number }): Promise<{ zoom: number }>;
   focus(options: { x: number; y: number }): Promise<void>;
   scan(options?: { codeOnly: boolean }): Promise<{ text: string }>;
+  setCodeLabel(options: { text: string; found: boolean }): Promise<void>;
   stop(): Promise<void>;
   addListener(eventName: "diagnostics", listenerFunc: (event: PurchaseCameraDiagnostics) => void): Promise<PluginListenerHandle>;
   addListener(eventName: "focusStatus", listenerFunc: (event: { success: boolean }) => void): Promise<PluginListenerHandle>;

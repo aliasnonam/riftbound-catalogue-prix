@@ -128,6 +128,14 @@ public class PurchaseCameraPlugin extends Plugin {
   }
 
   @PluginMethod
+  public void setCodeLabel(PluginCall call) {
+    getActivity().runOnUiThread(() -> {
+      if (overlay != null) overlay.setCodeLabel(call.getString("text", "OGN · 007/298"), call.getBoolean("found", false));
+      call.resolve();
+    });
+  }
+
+  @PluginMethod
   public void setZoomRatio(PluginCall call) {
     double requested = call.getDouble("zoom", 1d);
     getActivity().runOnUiThread(() -> {
@@ -236,6 +244,7 @@ public class PurchaseCameraPlugin extends Plugin {
     }
     updateLayerBounds(call);
     scannerLayer.setVisibility(View.VISIBLE);
+    overlay.setCodeLabel("OGN · 007/298", false);
   }
 
   private void updateLayerBounds(PluginCall call) {
@@ -534,6 +543,8 @@ public class PurchaseCameraPlugin extends Plugin {
     private final Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float focusX = -1f;
     private float focusY = -1f;
+    private String codeLabel = "OGN · 007/298";
+    private boolean codeFound;
 
     ScannerOverlay() {
       super(PurchaseCameraPlugin.this.getContext());
@@ -558,6 +569,12 @@ public class PurchaseCameraPlugin extends Plugin {
       }, 650L);
     }
 
+    void setCodeLabel(String text, boolean found) {
+      codeLabel = text;
+      codeFound = found;
+      invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
       super.onDraw(canvas);
@@ -571,7 +588,8 @@ public class PurchaseCameraPlugin extends Plugin {
       RectF code = new RectF(width * CODE_X, height * CODE_Y, width * (CODE_X + CODE_WIDTH), height * (CODE_Y + CODE_HEIGHT));
       border.setColor(Color.rgb(94, 212, 235));
       canvas.drawRoundRect(code, 8f, 8f, border);
-      canvas.drawText("OGN · 007/298", code.centerX(), code.top - 12f, label);
+      label.setColor(codeFound ? Color.rgb(94, 212, 235) : ACCENT);
+      canvas.drawText(codeLabel, code.centerX(), code.top - 12f, label);
       border.setColor(ACCENT);
       if (focusX >= 0f && focusY >= 0f) {
         canvas.drawCircle(focusX, focusY, 28f * getResources().getDisplayMetrics().density, border);
