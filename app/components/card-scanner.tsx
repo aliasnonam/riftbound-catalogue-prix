@@ -4,10 +4,10 @@ import { useState } from "react";
 import { Capacitor } from "@capacitor/core";
 
 import { CardPreviewThumb } from "@/app/components/catalog/CardPreview";
+import { ScanCardPrices, ScanFoilOwnership } from "@/app/components/scan-card-details";
 import { useSiteLanguage } from "@/app/lib/site-language";
 import { findCardFromDetectedText, findCardFromScan, parseCardScanText, type ResolvedCardScan } from "@/lib/card-scan";
 import type { CollectionImpression } from "@/lib/collection";
-import { getPrimaryVariantPrice } from "@/lib/pricing";
 import { useCollection } from "@/hooks/use-collection";
 
 type ScannerState =
@@ -17,11 +17,6 @@ type ScannerState =
   | { step: "error"; message: string };
 
 const AHRI_EXAMPLE_IMAGE = "/hero/sfd-ahri-signed.webp";
-const EURO = new Intl.NumberFormat("fr-FR", {
-  style: "currency",
-  currency: "EUR",
-  minimumFractionDigits: 2,
-});
 
 export function CardScanner({ impressions }: { impressions: CollectionImpression[] }) {
   const collection = useCollection();
@@ -113,7 +108,7 @@ export function CardScanner({ impressions }: { impressions: CollectionImpression
         {state.step === "idle" ? <button type="button" onClick={() => { void scan(); }}>{en ? "Open camera" : "Ouvrir la caméra"}</button> : null}
         {state.step === "reading" ? <p className="collection-scanner-status">{en ? "Reading on this device…" : "Lecture locale en cours…"}</p> : null}
         {state.step === "error" ? <div className="collection-scanner-feedback"><p>{state.message}</p><button type="button" onClick={() => { void scan(); }}>{en ? "Scan again" : "Scanner à nouveau"}</button></div> : null}
-        {state.step === "result" ? <ScanResult result={state.result} owned={state.result.kind === "match" && collection.getStatus(state.result.impression.impressionId) === "owned"} onAdd={add} onRetry={scan} en={en} /> : null}
+        {state.step === "result" ? <ScanResult result={state.result} owned={state.result.kind === "match" && collection.getStatus(state.result.impression.impressionId) === "owned"} foilOwned={state.result.kind === "match" && collection.isFoil(state.result.impression)} onAdd={add} onRetry={scan} en={en} /> : null}
       </section>
     </div> : null}
   </section>;
@@ -126,11 +121,10 @@ function ScannerExample({ en }: { en: boolean }) {
   </div>;
 }
 
-function ScanResult({ result, owned, onAdd, onRetry, en }: { result: ResolvedCardScan; owned: boolean; onAdd: (impression: CollectionImpression) => void; onRetry: () => Promise<void>; en: boolean }) {
+function ScanResult({ result, owned, foilOwned, onAdd, onRetry, en }: { result: ResolvedCardScan; owned: boolean; foilOwned: boolean; onAdd: (impression: CollectionImpression) => void; onRetry: () => Promise<void>; en: boolean }) {
   if (result.kind === "not-found") return <div className="collection-scanner-feedback"><p>{en ? "This card is not in the catalogue or its number could not be read." : "Carte hors catalogue ou numéro illisible."}</p><button type="button" onClick={() => { void onRetry(); }}>{en ? "Scan again" : "Scanner à nouveau"}</button></div>;
   if (result.kind === "ambiguous") return <div className="collection-scanner-feedback"><p>{en ? "Several cards match this number. Take another, sharper picture of the entire card." : "Plusieurs cartes correspondent à ce numéro. Reprends une photo plus nette de la carte entière."}</p><button type="button" onClick={() => { void onRetry(); }}>{en ? "Scan again" : "Scanner à nouveau"}</button></div>;
   const { impression, confidence } = result;
-  const price = getPrimaryVariantPrice(impression.variant, "low");
   return <div className="collection-scanner-result">
     <p className="eyebrow">{en ? "Card detected · " + (confidence === "high" ? "high" : "medium") + " confidence" : "Carte détectée · confiance " + (confidence === "high" ? "élevée" : "moyenne")}</p>
     <div className="collection-scanner-card">
@@ -138,8 +132,9 @@ function ScanResult({ result, owned, onAdd, onRetry, en }: { result: ResolvedCar
       <div>
         <h3>{impression.row.name}</h3>
         <p>{impression.setName} · #{impression.variant.number}</p>
-        <p className="collection-scanner-price">{en ? "Cardmarket price" : "Prix Cardmarket"} <strong>{price === null ? "—" : EURO.format(price)}</strong></p>
+        <ScanCardPrices variant={impression.variant} priceMode="low" en={en} />
         <p className={"collection-scanner-ownership " + (owned ? "is-owned" : "is-missing")}>{owned ? (en ? "✓ Already in your collection" : "✓ Déjà dans ta collection") : (en ? "○ Missing from your collection" : "○ Carte manquante de ta collection")}</p>
+        <ScanFoilOwnership variant={impression.variant} foilOwned={foilOwned} en={en} />
         <a className="collection-cardmarket-link" href={impression.row.cardmarketUrl} target="_blank" rel="noopener noreferrer">{en ? "View on Cardmarket ↗" : "Voir sur Cardmarket ↗"}</a>
         <small>{en ? "Tap the card to enlarge it." : "Touche la carte pour l’agrandir."}</small>
       </div>

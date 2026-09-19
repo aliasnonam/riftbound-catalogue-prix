@@ -2419,3 +2419,11 @@ a { color: inherit; text-decoration: none; }
 .purchase-hd-capture { width: 100%; min-height: 42px; margin-top: 12px; padding: 0 15px; border: 1px solid color-mix(in srgb, var(--set-accent) 55%, var(--line)); border-radius: 999px; background: rgba(255,255,255,.035); color: var(--muted-strong); font-size: 10px; font-weight: 800; }
 .purchase-hd-capture:disabled { cursor: wait; opacity: .62; }
 .purchase-camera-quality { margin: 10px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+
+.scan-foil-ownership { margin: 4px 0 8px; font-size: 11px; font-weight: 800; line-height: 1.4; }
+.scan-foil-ownership.is-owned { color: #62daa1; }
+.scan-foil-ownership.is-missing { color: #ffac97; }
+.scan-card-prices { display: grid; gap: 8px; margin: 10px 0; }
+.scan-card-prices > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); }
+.scan-card-prices dt { color: var(--muted-strong); font-size: 12px; font-weight: 700; }
+.scan-card-prices dd { margin: 0; color: var(--set-accent); font-size: 15px; font-weight: 800; }

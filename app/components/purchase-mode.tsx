@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 
 import { CardPreviewThumb } from "@/app/components/catalog/CardPreview";
+import { ScanCardPrices, ScanFoilOwnership } from "@/app/components/scan-card-details";
 import { useSiteLanguage } from "@/app/lib/site-language";
 import { PurchaseCamera, type NativePurchaseCamera, type PurchaseCameraDiagnostics } from "@/app/lib/native-purchase-camera";
 import { findCardFromDetectedText, findCardFromScan, parseCardScanText, type ResolvedCardScan } from "@/lib/card-scan";
 import type { CollectionImpression } from "@/lib/collection";
-import { getPrimaryVariantPrice, type PriceMode } from "@/lib/pricing";
+import { getPrimaryVariantPrice, getVariantNormalPrice, type PriceMode } from "@/lib/pricing";
 import {
   calculatePriceDifference,
   calculatePriceDifferencePercent,
@@ -438,6 +439,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const differencePercent = calculatePriceDifferencePercent(sellerPrice, cardmarketPrice);
   const owned = match ? collection.isOwned(match.impressionId) : false;
   const ownedQuantity = match ? collection.getQuantity(match.impressionId) : 0;
+  const foilOwned = match ? collection.isFoil(match) : false;
   const tone = getPurchasePriceTone(differencePercent);
   const add = () => {
     if (!match || added) return;
@@ -503,6 +505,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       {match ? <div className="purchase-quick-add" aria-live="polite">
         <div>
           <p className={`purchase-ownership ${owned ? "is-owned" : "is-missing"}`}>{owned ? (en ? `✓ Owned · ×${ownedQuantity}` : `✓ Possédée · ×${ownedQuantity}`) : (en ? "✕ Missing" : "✕ Manquante")}</p>
+          <ScanFoilOwnership variant={match.variant} foilOwned={foilOwned} en={en} />
           <strong>{match.row.name}</strong>
         </div>
         <button type="button" disabled={added} onClick={add}>{added ? (en ? "Added" : "Ajoutée") : (en ? "Quick add" : "Ajout rapide")}</button>
@@ -530,10 +533,13 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         <CardPreviewThumb className="purchase-scan-art" imageUrl={match.variant.imageUrl} name={match.row.name} />
         <div className="purchase-scan-result-copy">
           <p className={`purchase-ownership ${owned ? "is-owned" : "is-missing"}`}>{owned ? (en ? `✓ Owned · ×${ownedQuantity}` : `✓ Possédée · ×${ownedQuantity}`) : (en ? "✕ Missing" : "✕ Manquante")}</p>
+          <ScanFoilOwnership variant={match.variant} foilOwned={foilOwned} en={en} />
           <h3>{match.row.name}</h3><p>{match.setName} · #{match.variant.number} · {match.variant.rarity}</p>
-          <label>{en ? "Reference price" : "Prix Cardmarket"}<select value={priceMode} onChange={(event) => setPriceMode(event.target.value as PriceMode)}><option value="low">{en ? "Lowest price" : "Prix minimum"}</option><option value="trend">{en ? "Cardmarket trend" : "Tendance Cardmarket"}</option><option value="avg30">{en ? "30-day average" : "Moyenne 30 jours"}</option></select><strong>{cardmarketPrice === null ? (en ? "Unavailable" : "Indisponible") : EURO.format(cardmarketPrice)}</strong></label>
+          <label>{en ? "Reference price" : "Prix Cardmarket"}<select value={priceMode} onChange={(event) => setPriceMode(event.target.value as PriceMode)}><option value="low">{en ? "Lowest price" : "Prix minimum"}</option><option value="trend">{en ? "Cardmarket trend" : "Tendance Cardmarket"}</option><option value="avg30">{en ? "30-day average" : "Moyenne 30 jours"}</option></select></label>
+          <ScanCardPrices variant={match.variant} priceMode={priceMode} en={en} />
           <small className="purchase-price-date">{priceUpdatedAt ? `${en ? "Last price update: " : "Dernière mise à jour du prix : "}${new Intl.DateTimeFormat(language === "en" ? "en-GB" : "fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(priceUpdatedAt))}` : (en ? "Latest price available in the catalogue" : "Dernier prix disponible dans le catalogue")}</small>
           <label>{en ? "Seller price" : "Prix vendeur"}<input inputMode="decimal" type="text" value={sellerInput} onChange={(event) => setSellerInput(event.target.value)} placeholder="30,00 €" /></label>
+          {match.variant.pricing === "dual" && difference !== null ? <small className="purchase-price-date">{en ? "Compared with: " : "Comparé au prix : "}{getVariantNormalPrice(match.variant, priceMode) !== null ? "Normal" : "Foil"}</small> : null}
           {difference !== null && differencePercent !== null ? <p className={`purchase-difference is-${tone}`}><strong>{difference > 0 ? "+" : ""}{EURO.format(difference)}</strong><span>{differencePercent > 0 ? "+" : ""}{differencePercent.toLocaleString(language === "en" ? "en-GB" : "fr-FR", { maximumFractionDigits: 1 })} %</span></p> : null}
           <button type="button" disabled={added} onClick={add}>{added ? (en ? "Already in this purchase" : "Déjà dans cet achat") : owned ? (en ? "Add anyway" : "Ajouter quand même") : (en ? "Add to potential purchase" : "Ajouter à l’achat potentiel")}</button>
         </div>
