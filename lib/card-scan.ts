@@ -60,9 +60,7 @@ function nameMatchScore(text: string, candidate: string) {
 
 function normalizeOcrText(value: string) {
   return value
-    .normalize("NFKC")
     .toUpperCase()
-    .replace(/[✶✱✳✴✵★☆⋆∗﹡]/g, "*")
     .replace(/[•·—–_]/g, " ")
     .replace(/[|]/g, "I")
     .replace(/\s+/g, " ")
@@ -84,7 +82,7 @@ function normalizeNumber(value: string) {
 /** Extracts the printed line, for example: SFD • 227* / 221. */
 export function parseCardScanText(rawText: string): ScanParseResult {
   const text = normalizeOcrText(rawText);
-  const matches = [...text.matchAll(/\b([A-Z0-9]{3})\s*[- ]*\s*([0-9ITLOQDSZ]{1,3})\s*([*AX×+]?)\s*\/\s*([0-9ITLOQDSZ]{1,3})\b/g)];
+  const matches = [...text.matchAll(/\b([A-Z0-9]{3})\s*[- ]*\s*([0-9ITLOQDSZ]{1,3})\s*([*A]?)\s*\/\s*([0-9ITLOQDSZ]{1,3})\b/g)];
   const parsed = matches.flatMap((match) => {
     const set = normalizeSetCode(match[1]);
     if (!set) return [];
@@ -97,9 +95,9 @@ export function parseCardScanText(rawText: string): ScanParseResult {
     return [{
       setCode: set.setCode,
       collectorNumber: number,
-      marker: /[*X×+]/.test(suffix) ? "*" : suffix === "A" ? "a" : "",
+      marker: suffix === "*" ? "*" : suffix === "A" ? "a" : "",
       printedSetTotal: total,
-      confidence: set.confidence === "exact" && /^\d+$/.test(rawNumber) && /^\d+$/.test(rawTotal) && !/[X×+]/.test(suffix) && !/[✶✱✳✴✵★☆⋆∗﹡＊]/.test(rawText) ? "exact" : "probable",
+      confidence: set.confidence === "exact" && /^\d+$/.test(rawNumber) && /^\d+$/.test(rawTotal) ? "exact" : "probable",
     } satisfies ParsedCardScan];
   });
   const distinct = new Map(parsed.map((value) => [`${value.setCode}:${value.collectorNumber}${value.marker}:${value.printedSetTotal}`, value]));
@@ -119,16 +117,10 @@ export function findCardFromScan(scan: ParsedCardScan, impressions: CollectionIm
     const number = parsedNumber(impression.variant.number);
     return number?.number === scan.collectorNumber && number.marker === scan.marker;
   });
-  const sameNumber = sameSet.filter((impression) => parsedNumber(impression.variant.number)?.number === scan.collectorNumber);
-  // An omitted symbol cannot distinguish 308 from 308*. Never silently pick
-  // the unsigned printing; an explicitly read symbol must match exactly.
-  const numbered = scan.marker ? exact : sameNumber;
+  const numbered = exact.length ? exact : sameSet.filter((impression) => parsedNumber(impression.variant.number)?.number === scan.collectorNumber);
   const unique = [...new Map(numbered.map((impression) => [impression.impressionId, impression])).values()];
   if (unique.length === 0) return { kind: "not-found" };
   if (unique.length > 1) {
-    if (!scan.marker && unique.some((impression) => parsedNumber(impression.variant.number)?.marker)) {
-      return { kind: "ambiguous", candidates: unique };
-    }
     const normalizedName = normalizeDetectedName(detectedName);
     const named = normalizedName
       ? unique.filter((impression) => (impression.row.scanNames ?? [impression.row.name]).some((name) => nameMatchScore(normalizedName, normalizeDetectedName(name)) >= 0.8))

@@ -176,8 +176,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<ResolvedCardScan | null>(null);
   const [resultCode, setResultCode] = useState(PURCHASE_CODE_EXAMPLE);
-  const [codeCandidates, setCodeCandidates] = useState<CollectionImpression[]>([]);
-  const [candidateText, setCandidateText] = useState("");
   const [typingCode, setTypingCode] = useState(false);
   const [typedCode, setTypedCode] = useState("");
   const [priceMode, setPriceMode] = useState<PriceMode>("low");
@@ -415,17 +413,10 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     setAdded(sessionItems.includes(resolved.impression.impressionId));
     setMessage(en ? "Card locked. Add it whenever you are ready, then tap Scan next card." : "Carte verrouillée. Ajoute-la tranquillement, puis touche Scanner la carte suivante.");
   };
-  const showCodeCandidates = (candidates: CollectionImpression[], text: string) => {
-    pauseAutomaticScan();
-    setResult(null);
-    setCodeCandidates(candidates);
-    setCandidateText(text);
-    setMessage(en ? "Several versions match. Check the * or A printed after the number and choose your code." : "Plusieurs versions correspondent. Vérifie le * ou le A imprimé après le numéro et choisis ton code.");
-  };
   const submitTypedCode = () => {
     const resolved = resolveTypedPurchaseCode(typedCode, impressions);
     if (resolved.kind === "match") lockCard(resolved, typedCode);
-    else if (resolved.kind === "ambiguous") showCodeCandidates(resolved.candidates, typedCode);
+    else if (resolved.kind === "ambiguous") setMessage(en ? "This code matches several versions. Enter the printed suffix (* or A) to select one." : "Ce code correspond à plusieurs versions. Ajoute le suffixe imprimé (* ou A) pour choisir.");
     else setMessage(en ? "Code not found. Enter the three set letters and number, including * or A if printed (e.g. OGN 308*)." : "Code introuvable. Saisis les trois lettres et le numéro, avec * ou A si présent (ex. OGN 308*).");
   };
   const sellerPrice = normaliseSellerPrice(sellerInput);
@@ -496,8 +487,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
           return;
         }
         lockCard(resolved, text);
-      } else if (resolved.kind === "ambiguous" && resolved.candidates.length > 0) {
-        showCodeCandidates(resolved.candidates, text);
       } else {
         autoCandidateRef.current = null;
         if (manual) setMessage(en ? "Code unreadable or ambiguous. Place the bottom-left code in the small frame, hold still and try again." : "Code illisible ou ambigu. Place le code en bas à gauche dans le petit cadre, reste immobile et réessaie.");
@@ -527,7 +516,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
     autoCandidateRef.current = null;
     setScanBusy(true);
     setTypingCode(false);
-    setCodeCandidates([]);
     setMessage(en ? "Preparing manual code scan…" : "Préparation du scan manuel du code…");
     // Finish the current automatic frame, but discard its result. Never run
     // two OCR calls at once or let an old automatic result beat this request.
@@ -546,7 +534,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       setResult(null);
       setTypingCode(false);
       setTypedCode("");
-      setCodeCandidates([]);
       setSellerInput("");
       setAdded(false);
     }
@@ -590,7 +577,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         <p className={"purchase-auto-status" + (match ? " is-locked" : "")} role="status">{match ? (en ? "✓ Card locked · automatic scan paused" : "✓ Carte verrouillée · scan automatique en pause") : autoEnabled ? (en ? "Automatic scan active" : "Scan automatique actif") : (en ? "Automatic scan paused" : "Scan automatique en pause")}</p>
         <button type="button" className="purchase-read-code" disabled={scanBusy || readerState !== "ready"} onClick={toggleAutoScan}>{autoEnabled ? (en ? "Pause scanning" : "Mettre le scan en pause") : match ? (en ? "Scan next card" : "Scanner la carte suivante") : (en ? "Resume automatic scan" : "Reprendre le scan automatique")}</button>
         <button type="button" className="purchase-manual-scan" disabled={scanBusy || readerState !== "ready"} onClick={requestManualScan}>{scanBusy ? (en ? "Focusing and reading…" : "Mise au point et lecture…") : (en ? "Manual scan · code only" : "Scan manuel · code uniquement")}</button>
-        <button type="button" className="purchase-type-code" disabled={scanBusy} aria-expanded={typingCode} aria-controls="purchase-code-entry" onClick={() => { pauseAutomaticScan(); setTypingCode(!typingCode); setCodeCandidates([]); setMessage(""); }}>{typingCode ? (en ? "Close keyboard entry" : "Fermer la saisie") : (en ? "Enter the code by hand" : "Saisir le code à la main")}</button>
+        <button type="button" className="purchase-type-code" disabled={scanBusy} aria-expanded={typingCode} aria-controls="purchase-code-entry" onClick={() => { pauseAutomaticScan(); setTypingCode(!typingCode); setMessage(""); }}>{typingCode ? (en ? "Close keyboard entry" : "Fermer la saisie") : (en ? "Enter the code by hand" : "Saisir le code à la main")}</button>
       </div>
       {typingCode ? <form id="purchase-code-entry" className="purchase-code-entry" onSubmit={(event) => { event.preventDefault(); submitTypedCode(); }}>
         <label htmlFor="purchase-typed-code">{en ? "Printed card code" : "Code imprimé sur la carte"}</label>
@@ -599,7 +586,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         <button type="submit">{en ? "Find this card" : "Trouver cette carte"}</button>
       </form> : null}
       <p className="purchase-scan-feedback" role="status">{message}</p>
-      {codeCandidates.length > 0 ? <div className="purchase-code-candidates">{codeCandidates.map((candidate) => <button key={candidate.impressionId} type="button" onClick={() => lockCard({ kind: "match", impression: candidate, confidence: "high" }, candidateText)}><strong>{formatPurchaseScanCode(candidate, candidateText)}</strong><span>{candidate.row.name}</span></button>)}</div> : null}
       {CAMERA_DEBUG && previewResolution ? <p className="purchase-camera-quality">{en ? `${cameraBackend === "CameraX" ? "CameraX" : "Live preview"}: ${previewResolution}` : `${cameraBackend === "CameraX" ? "CameraX" : "Aperçu direct"} : ${previewResolution}`}</p> : null}
       {cameraDiagnostics?.debug ? <dl className="purchase-camera-debug">
         <div><dt>{en ? "Backend" : "Backend"}</dt><dd>{cameraDiagnostics.backend}</dd></div>

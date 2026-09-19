@@ -6,20 +6,18 @@ export const PURCHASE_CODE_EXAMPLE = "OGN · 007/298";
 
 export function formatPurchaseScanCode(impression: CollectionImpression, detectedText = "") {
   const parsed = parseCardScanText(detectedText);
-  const total = parsed.ok && parsed.value.setCode === impression.setCode
-    ? parsed.value.printedSetTotal : SET_BY_CODE[impression.setCode].baseSize;
+  const total = parsed.ok && parsed.value.setCode === impression.setCode ? parsed.value.printedSetTotal : SET_BY_CODE[impression.setCode].baseSize;
   return `${impression.setCode} · ${impression.variant.number.toUpperCase()}${total ? `/${total}` : ""}`;
 }
 
-/** Keyboard entry is exact: it accepts an optional printed denominator. */
+/** Exact manual entry; optional denominator is accepted. */
 export function resolveTypedPurchaseCode(raw: string, impressions: CollectionImpression[]): ResolvedCardScan {
-  const text = raw.normalize("NFKC").trim().toUpperCase().replace(/[✶✱✳✴✵★☆⋆∗﹡]/g, "*");
+  const text = raw.normalize("NFKC").trim().toUpperCase();
   const code = text.match(/^(OGN|SFD|UNL|VEN)[\s·•-]*(R?\d{1,3})\s*([*A]?)\s*(?:\/\s*\d{1,3})?$/);
   if (!code) return { kind: "not-found" };
   const canonical = (value: string) => value.toUpperCase().replace(/^(R?)0+(?=\d)/, "$1");
   const number = canonical(`${code[2]}${code[3]}`);
-  const candidates = [...new Map(impressions.filter((impression) => impression.setCode === code[1]
-    && canonical(impression.variant.number) === number).map((impression) => [impression.impressionId, impression])).values()];
+  const candidates = [...new Map(impressions.filter((impression) => impression.setCode === code[1] && canonical(impression.variant.number) === number).map((impression) => [impression.impressionId, impression])).values()];
   if (candidates.length === 1) return { kind: "match", impression: candidates[0], confidence: "high" };
   return candidates.length ? { kind: "ambiguous", candidates } : { kind: "not-found" };
 }
