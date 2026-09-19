@@ -164,7 +164,11 @@ public class PurchaseCameraPlugin extends Plugin {
         return;
       }
       pendingScan = call;
-      requestFocus(CODE_X + CODE_WIDTH / 2f, CODE_Y + CODE_HEIGHT / 2f);
+      // Manual recovery focuses the collector line. Automatic frames keep
+      // continuous AF and never restart metering on every OCR request.
+      if (call.getBoolean("codeOnly", true)) {
+        requestFocus(CODE_X + CODE_WIDTH / 2f, CODE_Y + CODE_HEIGHT / 2f);
+      }
       mainHandler.postDelayed(() -> {
         if (pendingScan == call) {
           pendingScan = null;
@@ -216,7 +220,9 @@ public class PurchaseCameraPlugin extends Plugin {
           float[] down = (float[]) view.getTag();
           float slop = 12f * getContext().getResources().getDisplayMetrics().density;
           if (down != null && Math.hypot(event.getX() - down[0], event.getY() - down[1]) < slop) {
-            notifyListeners("scanRequested", new JSObject());
+            // Touching the preview adjusts focus only. A locked result can
+            // only be replaced through the explicit controls in the WebView.
+            requestFocus(event.getX() / Math.max(1f, previewView.getWidth()), event.getY() / Math.max(1f, previewView.getHeight()));
           }
           view.setTag(null);
         } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
@@ -345,7 +351,7 @@ public class PurchaseCameraPlugin extends Plugin {
     }
     final Bitmap code;
     try {
-      code = cropCodeImage(imageProxy);
+      code = cropScanImage(imageProxy, call.getBoolean("codeOnly", true));
     } catch (Exception error) {
       analysisBusy.set(false);
       imageProxy.close();
@@ -380,18 +386,19 @@ public class PurchaseCameraPlugin extends Plugin {
       });
   }
 
-  private Bitmap cropCodeImage(ImageProxy proxy) {
+  private Bitmap cropScanImage(ImageProxy proxy, boolean codeOnly) {
     Bitmap full = proxy.toBitmap();
     Rect rect = proxy.getCropRect();
     Matrix rotation = new Matrix();
     rotation.postRotate(proxy.getImageInfo().getRotationDegrees());
     Bitmap upright = Bitmap.createBitmap(full, rect.left, rect.top, rect.width(), rect.height(), rotation, true);
     int x = Math.round(upright.getWidth() * CODE_X);
-    int y = Math.round(upright.getHeight() * CODE_Y);
-    int width = Math.min(upright.getWidth() - x, Math.max(1, Math.round(upright.getWidth() * CODE_WIDTH)));
-    int height = Math.min(upright.getHeight() - y, Math.max(1, Math.round(upright.getHeight() * CODE_HEIGHT)));
+    int y = Math.round(upright.getHeight() * (codeOnly ? CODE_Y : .055f));
+    int width = Math.min(upright.getWidth() - x, Math.max(1, Math.round(upright.getWidth() * (codeOnly ? CODE_WIDTH : .89f))));
+    int height = Math.min(upright.getHeight() - y, Math.max(1, Math.round(upright.getHeight() * (codeOnly ? CODE_HEIGHT : .89f))));
     Bitmap crop = Bitmap.createBitmap(upright, x, y, width, height);
-    Bitmap enlarged = Bitmap.createScaledBitmap(crop, width * 2, height * 2, true);
+    float scale = codeOnly ? 2f : Math.min(1f, 1280f / width);
+    Bitmap enlarged = Bitmap.createScaledBitmap(crop, Math.round(width * scale), Math.round(height * scale), true);
     if (crop != enlarged) crop.recycle();
     if (upright != crop && upright != enlarged) upright.recycle();
     if (full != upright && full != crop && full != enlarged) full.recycle();
@@ -564,7 +571,7 @@ public class PurchaseCameraPlugin extends Plugin {
       RectF code = new RectF(width * CODE_X, height * CODE_Y, width * (CODE_X + CODE_WIDTH), height * (CODE_Y + CODE_HEIGHT));
       border.setColor(Color.rgb(94, 212, 235));
       canvas.drawRoundRect(code, 8f, 8f, border);
-      canvas.drawText("OGN · 010/298", code.centerX(), code.top - 12f, label);
+      canvas.drawText("OGN · 007/298", code.centerX(), code.top - 12f, label);
       border.setColor(ACCENT);
       if (focusX >= 0f && focusY >= 0f) {
         canvas.drawCircle(focusX, focusY, 28f * getResources().getDisplayMetrics().density, border);

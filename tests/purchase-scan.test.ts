@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getPurchaseCodeCrop, PURCHASE_CODE_REGION, resolvePurchaseCode } from "@/lib/purchase-scan";
+import { getPurchaseCodeCrop, PURCHASE_CODE_REGION, PURCHASE_CARD_REGION, resolvePurchaseCode, resolveAutomaticPurchaseScan } from "@/lib/purchase-scan";
 import type { CollectionImpression } from "@/lib/collection";
 
 const impressions = [
@@ -19,6 +19,26 @@ test("purchase scan requires the collector line and never guesses from a nearby 
 test("purchase scan refuses ambiguous printings even if a name is present", () => {
   const alternate = { ...impressions[0], impressionId: "OGN:010-promo" };
   assert.equal(resolvePurchaseCode("OGN 010/298 Légionnaire d’arrière-garde", [...impressions, alternate]).kind, "ambiguous");
+});
+
+test("automatic scanning reads names while manual recovery requires the code", () => {
+  const automatic = resolveAutomaticPurchaseScan("Grand méchant Rex", impressions);
+  assert.equal(automatic.kind, "match");
+  if (automatic.kind === "match") {
+    assert.equal(automatic.impression.impressionId, "OGN:092");
+    assert.equal(automatic.confidence, "medium");
+  }
+  assert.equal(resolvePurchaseCode("Grand méchant Rex", impressions).kind, "not-found");
+  assert.equal(resolveAutomaticPurchaseScan("OGN 010/298 OGN 092/298 Grand méchant Rex", impressions).kind, "ambiguous");
+});
+
+test("automatic crop covers the card guide while manual crop stays on the bottom-left code", () => {
+  const full = getPurchaseCodeCrop(630, 880, 63 / 88, false);
+  const code = getPurchaseCodeCrop(630, 880);
+  assert.equal(full.y, 880 * PURCHASE_CARD_REGION.y);
+  assert.equal(full.width, 630 * PURCHASE_CARD_REGION.width);
+  assert.ok(code.y > full.y + full.height * 0.8);
+  assert.ok(code.width < full.width && code.height < full.height * 0.2);
 });
 
 test("code crop matches the small visible frame with portrait, landscape and square camera streams", () => {

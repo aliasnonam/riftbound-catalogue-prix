@@ -8,7 +8,7 @@ import { ScanCardPrices, ScanFoilOwnership } from "@/app/components/scan-card-de
 import { useSiteLanguage } from "@/app/lib/site-language";
 import { PurchaseCamera, type NativePurchaseCamera, type PurchaseCameraDiagnostics } from "@/app/lib/native-purchase-camera";
 import type { ResolvedCardScan } from "@/lib/card-scan";
-import { getPurchaseCodeCrop, resolvePurchaseCode } from "@/lib/purchase-scan";
+import { getPurchaseCodeCrop, resolvePurchaseCode, resolveAutomaticPurchaseScan } from "@/lib/purchase-scan";
 import type { CollectionImpression } from "@/lib/collection";
 import type { PriceMode } from "@/lib/pricing";
 import {
@@ -163,7 +163,14 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   const pendingZoomRef = useRef<number | null>(null);
   const workingRef = useRef(false);
   const scanGenerationRef = useRef(0);
-  const scanRequestRef = useRef<() => void>(() => {});
+  const scanFrameRef = useRef<(manual: boolean) => void>(() => {});
+  const autoEnabledRef = useRef(true);
+  const autoEpochRef = useRef(0);
+  const manualBusyRef = useRef(false);
+  const manualQueuedRef = useRef(false);
+  const autoCandidateRef = useRef<string | null>(null);
+  const autoTimerRef = useRef<number | null>(null);
+  const [autoEnabled, setAutoEnabled] = useState(true);
   const [scanBusy, setScanBusy] = useState(false);
   const [readerState, setReaderState] = useState<ReaderState>("starting");
   const [message, setMessage] = useState("");
@@ -192,6 +199,11 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
 
   const stopCamera = () => {
     scanGenerationRef.current += 1;
+    autoEnabledRef.current = false;
+    manualQueuedRef.current = false;
+    manualBusyRef.current = false;
+    if (autoTimerRef.current !== null) window.clearInterval(autoTimerRef.current);
+    autoTimerRef.current = null;
     workingRef.current = false;
     nativeListenerCleanupRef.current?.();
     nativeListenerCleanupRef.current = null;
@@ -224,7 +236,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       };
     };
     try {
-      const scanListener = await PurchaseCamera.addListener("scanRequested", () => scanRequestRef.current());
       const diagnosticsListener = await PurchaseCamera.addListener("diagnostics", (diagnostics: PurchaseCameraDiagnostics) => {
         setCameraDiagnostics((current) => ({ ...current, ...diagnostics }));
         if (diagnostics.previewWidth && diagnostics.previewHeight) {
@@ -240,7 +251,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         setCameraDiagnostics((current) => current ? { ...current, focusSuccess: success } : current);
       });
       nativeListenerCleanupRef.current = () => {
-        void scanListener.remove();
         void diagnosticsListener.remove();
         void focusListener.remove();
       };
@@ -270,7 +280,6 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         window.visualViewport?.removeEventListener("resize", updateBounds);
         window.visualViewport?.removeEventListener("scroll", updateBounds);
         scrollContainer?.removeEventListener("scroll", updateBounds);
-        void scanListener.remove();
         void diagnosticsListener.remove();
         void focusListener.remove();
       };
@@ -290,6 +299,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
   useEffect(() => {
     let cancelled = false;
     const start = async () => {
+      autoEnabledRef.current = true;
       try {
         const { Camera } = await import("@capacitor/camera");
         const current = await Camera.checkPermissions();
@@ -409,27 +419,25 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       if (track) void track.applyConstraints({ advanced: [{ zoom: pending } as CameraConstraintSet] }).catch(() => undefined);
     });
   };
-  const scanCode = async () => {
-    if (workingRef.current || readerState !== "ready") return;
+  const scanFrame = async (manual: boolean) => {
+    if (workingRef.current || readerState !== "ready" || (!manual && !autoEnabledRef.current)) return;
     workingRef.current = true;
     const generation = ++scanGenerationRef.current;
-    setScanBusy(true);
-    setResult(null);
-    setSellerInput("");
-    setAdded(false);
-    setMessage("");
+    const automaticEpoch = autoEpochRef.current;
+    if (manual) setMessage(en ? "Focusing on the bottom-left code…" : "Mise au point sur le code en bas à gauche…");
     try {
       let text: string;
       if (nativeCameraRef.current) {
-        ({ text } = await nativeCameraRef.current.scan());
+        ({ text } = await nativeCameraRef.current.scan({ codeOnly: manual }));
       } else {
         const video = videoRef.current;
         const canvas = canvasRef.current;
         const stage = cameraStageRef.current;
         if (!video || !canvas || !stage || !video.videoWidth || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) throw new Error("preview");
-        const crop = getPurchaseCodeCrop(video.videoWidth, video.videoHeight, stage.clientWidth / stage.clientHeight);
-        canvas.width = Math.round(crop.width * 2);
-        canvas.height = Math.round(crop.height * 2);
+        const crop = getPurchaseCodeCrop(video.videoWidth, video.videoHeight, stage.clientWidth / stage.clientHeight, manual);
+        const scale = manual ? 2 : Math.min(1, 1280 / crop.width);
+        canvas.width = Math.round(crop.width * scale);
+        canvas.height = Math.round(crop.height * scale);
         const context = canvas.getContext("2d");
         if (!context) throw new Error("canvas");
         context.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
@@ -437,25 +445,79 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
         const { CapacitorPluginMlKitTextRecognition } = await import("@pantrist/capacitor-plugin-ml-kit-text-recognition");
         ({ text } = await CapacitorPluginMlKitTextRecognition.detectText({ base64Image }));
       }
-      if (generation !== scanGenerationRef.current) return;
-      const resolved = resolvePurchaseCode(text, impressions);
+      if (generation !== scanGenerationRef.current || (!manual && (!autoEnabledRef.current || automaticEpoch !== autoEpochRef.current))) return;
+      const resolved = manual ? resolvePurchaseCode(text, impressions) : resolveAutomaticPurchaseScan(text, impressions);
       if (resolved.kind === "match") {
+        // Names and OCR-corrected codes must agree on two consecutive frames.
+        // An exact collector line can lock immediately.
+        if (!manual && resolved.confidence !== "high" && autoCandidateRef.current !== resolved.impression.impressionId) {
+          autoCandidateRef.current = resolved.impression.impressionId;
+          return;
+        }
+        autoEnabledRef.current = false;
+        setAutoEnabled(false);
+        autoCandidateRef.current = null;
         setResult(resolved);
+        setSellerInput("");
         setAdded(sessionItems.includes(resolved.impression.impressionId));
-        setMessage(en ? "Card ready. You can add it before scanning another." : "Carte trouvée. Tu peux l’ajouter avant de lancer un autre scan.");
+        setMessage(en ? "Card locked. Add it whenever you are ready, then tap Scan next card." : "Carte verrouillée. Ajoute-la tranquillement, puis touche Scanner la carte suivante.");
       } else {
-        setMessage(en ? "Code unreadable or ambiguous. Place the bottom-left code in the small frame, hold still and try again." : "Code illisible ou ambigu. Place le code en bas à gauche dans le petit cadre, reste immobile et réessaie.");
+        autoCandidateRef.current = null;
+        if (manual) setMessage(en ? "Code unreadable or ambiguous. Place the bottom-left code in the small frame, hold still and try again." : "Code illisible ou ambigu. Place le code en bas à gauche dans le petit cadre, reste immobile et réessaie.");
       }
     } catch {
-      if (generation === scanGenerationRef.current) setMessage(en ? "Could not read the code. Hold still, avoid glare and tap Scan again." : "Impossible de lire le code. Reste immobile, évite les reflets et appuie à nouveau sur Scanner.");
+      autoCandidateRef.current = null;
+      if (manual && generation === scanGenerationRef.current) setMessage(en ? "Could not read the code. Hold still, avoid glare and tap Scan again." : "Impossible de lire le code. Reste immobile, évite les reflets et appuie à nouveau sur Scanner.");
     } finally {
       if (generation === scanGenerationRef.current) {
         workingRef.current = false;
-        setScanBusy(false);
+        if (manualQueuedRef.current) {
+          manualQueuedRef.current = false;
+          scanFrameRef.current(true);
+        } else if (manual) {
+          manualBusyRef.current = false;
+          setScanBusy(false);
+        }
       }
     }
   };
-  useEffect(() => { scanRequestRef.current = () => { void scanCode(); }; });
+  const requestManualScan = () => {
+    if (manualBusyRef.current || readerState !== "ready") return;
+    manualBusyRef.current = true;
+    autoEpochRef.current += 1;
+    autoEnabledRef.current = false;
+    setAutoEnabled(false);
+    autoCandidateRef.current = null;
+    setScanBusy(true);
+    setMessage(en ? "Preparing manual code scan…" : "Préparation du scan manuel du code…");
+    // Finish the current automatic frame, but discard its result. Never run
+    // two OCR calls at once or let an old automatic result beat this request.
+    if (workingRef.current) manualQueuedRef.current = true;
+    else void scanFrame(true);
+  };
+  const toggleAutoScan = () => {
+    if (manualBusyRef.current) return;
+    autoEpochRef.current += 1;
+    autoCandidateRef.current = null;
+    const enabled = !autoEnabledRef.current;
+    autoEnabledRef.current = enabled;
+    setAutoEnabled(enabled);
+    setMessage("");
+    if (enabled) {
+      setResult(null);
+      setSellerInput("");
+      setAdded(false);
+    }
+  };
+  useEffect(() => { scanFrameRef.current = (manual) => { void scanFrame(manual); }; });
+  useEffect(() => {
+    if (readerState !== "ready") return;
+    autoTimerRef.current = window.setInterval(() => scanFrameRef.current(false), 850);
+    return () => {
+      if (autoTimerRef.current !== null) window.clearInterval(autoTimerRef.current);
+      autoTimerRef.current = null;
+    };
+  }, [readerState]);
   useEffect(() => {
     // A detected card inserts the quick-add panel above the native preview.
     // Keep its physical bounds aligned even when the user has not scrolled.
@@ -468,21 +530,25 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
       <button className="collection-scanner-close" type="button" aria-label={en ? "Close purchase mode" : "Fermer le mode achat"} onClick={() => { stopCamera(); onClose(); }}>×</button>
       <p className="eyebrow">{en ? "Purchase mode" : "Mode achat"}</p>
       <h2 id="purchase-scanner-title">{en ? "Scan one card at a time" : "Scanne une carte à la fois"}</h2>
-      <p className="purchase-scan-instructions">{en ? <>Place the <strong>code at the bottom left of the card</strong> (e.g. OGN · 010/298) inside the small highlighted frame. Hold still, then tap <strong>Scan the code</strong> or the camera preview. The result stays until your next scan.</> : <>Place le <strong>code en bas à gauche de la carte</strong> (ex. OGN · 010/298) dans le petit cadre coloré. Reste immobile, puis touche <strong>Scanner le code</strong> ou l’aperçu caméra. Le résultat reste affiché jusqu’au prochain scan.</>}</p>
+      <p className="purchase-scan-instructions">{en ? <>Frame the card: <strong>scanning is automatic</strong> and pauses as soon as a card is found. Tap <strong>Scan next card</strong> when ready. If needed, use manual scan with only the <strong>bottom-left code</strong> (OGN · 007/298) inside the small blue frame.</> : <>Cadre la carte : <strong>le scan est automatique</strong> et se bloque dès qu’une carte est trouvée. Touche <strong>Scanner la carte suivante</strong> quand tu es prêt. En cas de souci, utilise le scan manuel en plaçant le <strong>code en bas à gauche</strong> (OGN · 007/298) dans le petit cadre bleu.</>}</p>
       {match ? <div className="purchase-quick-add" aria-live="polite">
         <div>
           <p className={`purchase-ownership ${owned ? "is-owned" : "is-missing"}`}>{owned ? (en ? `✓ Owned · ×${ownedQuantity}` : `✓ Possédée · ×${ownedQuantity}`) : (en ? "✕ Missing" : "✕ Manquante")}</p>
           <ScanFoilOwnership variant={match.variant} foilOwned={foilOwned} en={en} />
           <strong>{match.row.name}</strong>
         </div>
-        <button type="button" disabled={added} onClick={add}>{added ? (en ? "Added" : "Ajoutée") : (en ? "Quick add" : "Ajout rapide")}</button>
+        <button type="button" disabled={added || scanBusy} onClick={add}>{added ? (en ? "Added" : "Ajoutée") : (en ? "Quick add" : "Ajout rapide")}</button>
       </div> : null}
-      <div ref={cameraStageRef} onClick={() => { if (cameraBackend === "Web") void scanCode(); }} className={`purchase-camera-stage${cameraBackend === "CameraX" ? " is-native-camera" : ""}`}>
+      <div ref={cameraStageRef} className={`purchase-camera-stage${cameraBackend === "CameraX" ? " is-native-camera" : ""}`}>
         <video ref={videoRef} autoPlay muted playsInline />
         <div className="purchase-scan-guide" aria-hidden="true" /><div className="purchase-code-guide" aria-hidden="true"><span>{en ? "BOTTOM-LEFT CODE" : "CODE EN BAS À GAUCHE"}</span></div>
-        <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (en ? "Tap to read the code" : "Touche pour lire le code")}</p>
+        <p>{readerState === "starting" ? (en ? "Starting camera…" : "Démarrage de la caméra…") : readerState === "error" ? message : (autoEnabled ? (en ? "Automatic scanning…" : "Scan automatique en cours…") : (en ? "Scan paused" : "Scan en pause"))}</p>
       </div>
-      <button type="button" className="purchase-read-code" disabled={scanBusy || readerState !== "ready"} onClick={() => { void scanCode(); }}>{scanBusy ? (en ? "Focusing and reading…" : "Mise au point et lecture…") : (en ? "Scan the code" : "Scanner le code")}</button>
+      <div className="purchase-scan-controls">
+        <p className={"purchase-auto-status" + (match ? " is-locked" : "")} role="status">{match ? (en ? "✓ Card locked · automatic scan paused" : "✓ Carte verrouillée · scan automatique en pause") : autoEnabled ? (en ? "Automatic scan active" : "Scan automatique actif") : (en ? "Automatic scan paused" : "Scan automatique en pause")}</p>
+        <button type="button" className="purchase-read-code" disabled={scanBusy || readerState !== "ready"} onClick={toggleAutoScan}>{autoEnabled ? (en ? "Pause scanning" : "Mettre le scan en pause") : match ? (en ? "Scan next card" : "Scanner la carte suivante") : (en ? "Resume automatic scan" : "Reprendre le scan automatique")}</button>
+        <button type="button" className="purchase-manual-scan" disabled={scanBusy || readerState !== "ready"} onClick={requestManualScan}>{scanBusy ? (en ? "Focusing and reading…" : "Mise au point et lecture…") : (en ? "Manual scan · code only" : "Scan manuel · code uniquement")}</button>
+      </div>
       <p className="purchase-scan-feedback" role="status">{message}</p>
       {CAMERA_DEBUG && previewResolution ? <p className="purchase-camera-quality">{en ? `${cameraBackend === "CameraX" ? "CameraX" : "Live preview"}: ${previewResolution}` : `${cameraBackend === "CameraX" ? "CameraX" : "Aperçu direct"} : ${previewResolution}`}</p> : null}
       {cameraDiagnostics?.debug ? <dl className="purchase-camera-debug">
@@ -509,7 +575,7 @@ function ContinuousPurchaseScanner({ sessionId, sessionItems, impressions, onClo
           <label>{en ? "Seller price" : "Prix vendeur"}<input inputMode="decimal" type="text" value={sellerInput} onChange={(event) => setSellerInput(event.target.value)} placeholder="30,00 €" /></label>
           {match.variant.pricing === "dual" && difference !== null ? <small className="purchase-price-date">{en ? "Compared with: " : "Comparé au prix : "}Normal</small> : null}
           {difference !== null && differencePercent !== null ? <p className={`purchase-difference is-${tone}`}><strong>{difference > 0 ? "+" : ""}{EURO.format(difference)}</strong><span>{differencePercent > 0 ? "+" : ""}{differencePercent.toLocaleString(language === "en" ? "en-GB" : "fr-FR", { maximumFractionDigits: 1 })} %</span></p> : null}
-          <button type="button" disabled={added} onClick={add}>{added ? (en ? "Already in this purchase" : "Déjà dans cet achat") : owned ? (en ? "Add anyway" : "Ajouter quand même") : (en ? "Add to potential purchase" : "Ajouter à l’achat potentiel")}</button>
+          <button type="button" disabled={added || scanBusy} onClick={add}>{added ? (en ? "Already in this purchase" : "Déjà dans cet achat") : owned ? (en ? "Add anyway" : "Ajouter quand même") : (en ? "Add to potential purchase" : "Ajouter à l’achat potentiel")}</button>
         </div>
       </div> : null}
     </section>
